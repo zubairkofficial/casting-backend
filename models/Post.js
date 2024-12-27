@@ -34,7 +34,7 @@ export default function initPostModel(sequelize) {
                 defaultValue: false,
             },
             data: {
-                type: DataTypes.JSON,
+                type: DataTypes.JSONB,
                 defaultValue: false,
                 allowNull: false,
             }

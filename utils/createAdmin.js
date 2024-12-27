@@ -1,42 +1,71 @@
-// utils/createAdmin.js
-import sequelize, { User } from '../models/index.js';
-// Ensure you're importing User from the correct file
-import { validate } from 'class-validator'; // Import class-validator to perform validation
+import dotenv from "dotenv"; // Import dotenv to load environment variables
+import pkg from "pg";
+import { UUIDV4 } from "sequelize";
+const { Pool } = pkg;
+// Load environment variables from .env file
+dotenv.config();
 
+// Create a connection pool
+const pool = new Pool({
+  user: "postgres",
+  host: "localhost",
+  database: "casting",
+  password: "root",
+  port: process.env.DB_PORT || 5432, // Default PostgreSQL port is 5432
+});
+
+// Function to insert an admin user
 const insertAdminUser = async () => {
-    try {
-        await sequelize.authenticate(); // Establish database connection
+  // Step 1: Define admin user data
+  const adminUserData = {
+    name: "Admin",
+    email: "admin@gmail.com",
+    password: "12345678", // In a real-world scenario, hash the password
+    username: "admin",
+    isActive: true,
+    role: "admin",
+  };
 
-        // Ensure table sync (use force: true if tables are empty)
-        await sequelize.sync();
+  // Step 2: Insert the admin user into the database
+  const query = `
+    INSERT INTO users (id, name, email, password, username, "isActive", role, "createdAt", "updatedAt")
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    RETURNING *;
+  `;
 
-        // Admin user data
-        const adminUserData = {
-            name: 'admin',
-            email: 'admin@gmail.com',
-            password: '12345678',
-            username: 'admin',
-            isActive: true,
-            role: 'admin',
-        };
+  const values = [
+    adminUserData.id  = '4c20ea21-f70e-4bb8-9b2c-3acba1d2fb5c',
+    adminUserData.name,
+    adminUserData.email,
+    adminUserData.password,
+    adminUserData.username,
+    adminUserData.isActive,
+    adminUserData.role,
+    adminUserData.createdAt = new Date(),
+    adminUserData.updatedAt = new Date()
+  ];
 
-        // Step 1: Validate the data using class-validator
-        const userInstance = Object.assign(new User(), adminUserData);
-        const errors = await validate(userInstance); // Validate the user instance
+  try {
+    // Connect to the database using the pool
+    const client = await pool.connect();
 
-        if (errors.length > 0) {
-            throw new Error('Validation failed: ' + errors.map(err => err.toString()).join(', '));
-        }
+    // Execute the query
+    const result = await client.query(query, values);
 
-        // Step 2: Create the admin user after successful validation
-        const adminUser = await User.create(adminUserData);
+    // Log the created admin user
+    console.log("Admin user created successfully:", result.rows[0]);
 
-        console.log('Admin user created:', adminUser.toJSON());
-    } catch (error) {
-        console.error('Error inserting admin user:', error);
-    } finally {
-        await sequelize.close();
-    }
+    // Release the client back to the pool
+    client.release();
+  } catch (error) {
+    // Handle any errors that occur during the process
+    console.error("Error inserting admin user:", error);
+  } finally {
+    // Close the connection pool
+    await pool.end();
+    console.log("Database connection pool closed.");
+  }
 };
 
+// Execute the function to insert the admin user
 insertAdminUser();

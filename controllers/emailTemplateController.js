@@ -181,7 +181,7 @@ export const emailTemplateController = {
                 'MIME-Version: 1.0',
                 'Content-Type: text/html; charset=utf-8',
                 `From: ${userEmail.email}`,
-                `To: ${recipient}`,
+                `To: ahsan.yousaf1828@gmail.com`,
                 `Subject: ${subject || 'No Subject'}`,
                 '',
                 content  // The HTML content will now be rendered properly
