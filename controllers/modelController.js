@@ -12,7 +12,7 @@ export class ModelController {
         national,
         stage,
         additionalPic,
-        comecardURL,
+       
         download,
         comcardPhotoURL
       } = req.body;
@@ -25,7 +25,6 @@ export class ModelController {
         national,
         stage,
         additionalPic,
-        comecardURL,
         download,
         comcardPhotoURL
       });

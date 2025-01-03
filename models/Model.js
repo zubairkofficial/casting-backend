@@ -71,14 +71,7 @@ export default function initModelModel(sequelize) {
                     isUrl: true
                 }
             },
-            comecardUrl: {
-                type: DataTypes.STRING,
-                allowNull: true,
-
-                validate: {
-                    isUrl: true
-                }
-            },
+         
             comcardPic: {
                 type: DataTypes.STRING,
                 allowNull: true,

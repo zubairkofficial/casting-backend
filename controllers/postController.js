@@ -1,6 +1,5 @@
 import { google } from "googleapis";
 import { UserEmail, Post } from "../models/index.js";
-import { Op, Sequelize } from "sequelize";
 import sequelize from "../models/index.js";
 
 export const postController = {
@@ -81,7 +80,7 @@ export const postController = {
       res.status(500).json({
         message: "Failed to store posts",
         error: error.message,
-        details: error.response?.data || "No additional error details",
+        details: "No additional error details",
       });
     }
   },
@@ -115,6 +114,89 @@ export const postController = {
           hasPreviousPage: page > 1,
         },
         data: dataFields, // Sending the `data` column separately
+        
+      });
+    } catch (error) {
+      console.error("Error fetching posts:", error);
+      res.status(500).json({
+        message: "Failed to fetch posts",
+        error: error.message,
+      });
+    }
+  },
+  async getAllEmailedPosts(req, res) {
+    try {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const offset = (page - 1) * limit;
+
+      const { count, rows: posts } = await Post.findAndCountAll({
+        where: { isEmailSent: true },
+        limit,
+        offset,
+        order: [["createdAt", "DESC"]],
+      });
+
+      const totalPages = Math.ceil(count / limit);
+
+      // Extract the `data` column from each post
+      const dataFields = posts.map((post) => post.data);
+
+      res.json({
+        posts: {
+          data: posts, // Nesting posts inside a `data` object
+        },
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalItems: count,
+          itemsPerPage: limit,
+          hasNextPage: page < totalPages,
+          hasPreviousPage: page > 1,
+        },
+        data: dataFields, // Sending the `data` column separately
+        
+      });
+    } catch (error) {
+      console.error("Error fetching posts:", error);
+      res.status(500).json({
+        message: "Failed to fetch posts",
+        error: error.message,
+      });
+    }
+  },
+
+  async getFavoritesPosts(req, res) {
+    try {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const offset = (page - 1) * limit;
+
+      const { count, rows: posts } = await Post.findAndCountAll({
+        where: { isFavorite: true },
+        limit,
+        offset,
+        order: [["createdAt", "DESC"]],
+      });
+
+      const totalPages = Math.ceil(count / limit);
+
+      // Extract the `data` column from each post
+      const dataFields = posts.map((post) => post.data);
+
+      res.json({
+        posts: {
+          data: posts, // Nesting posts inside a `data` object
+        },
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalItems: count,
+          itemsPerPage: limit,
+          hasNextPage: page < totalPages,
+          hasPreviousPage: page > 1,
+        },
+        data: dataFields, // Sending the `data` column separately
         print: "Hello",
       });
     } catch (error) {
@@ -125,23 +207,23 @@ export const postController = {
       });
     }
   },
+
   async updatePost(req, res) {
     try {
       const { id } = req.params;
-      const { isFavorite, isEmailSent } = req.body;
+      const { isFavorite } = req.body;
 
-      const post = await Post.findByPk(id);
+      const post = await Post.findOne({ where: { postId: id } });
       if (!post) {
         return res.status(404).json({ message: "Post not found" });
       }
 
       await post.update({
         isFavorite: isFavorite !== undefined ? isFavorite : post.isFavorite,
-        isEmailSent: isEmailSent !== undefined ? isEmailSent : post.isEmailSent,
       });
 
       res.json({
-        message: "Post updated successfully",
+        message: "Post Added to favourites successfully",
         post,
       });
     } catch (error) {
@@ -152,80 +234,189 @@ export const postController = {
       });
     }
   },
+
   async searchPosts(req, res) {
     try {
       const {
         query,
-        page = 1,
-        limit = 10,
         sortBy = "createdAt",
         sortOrder = "DESC",
+        page = 1,
+        pageSize = 10,
       } = req.query;
 
-      // Calculate offset for pagination
-      const offset = (page - 1) * limit;
+      // Convert page and pageSize to integers and set default values if necessary
+      const currentPage = parseInt(page, 10) > 0 ? parseInt(page, 10) : 1;
+      const limit = parseInt(pageSize, 10) > 0 ? parseInt(pageSize, 10) : 10;
+      const offset = (currentPage - 1) * limit;
 
-      // Sanitize and prepare the search query
-      const searchQuery =`%${query}%`;
+      // Validate sortBy and sortOrder
+      const allowedSortFields = ["createdAt", "updatedAt", "id"];
+      const allowedSortOrders = ["ASC", "DESC"];
+      const validSortBy = allowedSortFields.includes(sortBy)
+        ? sortBy
+        : "createdAt";
+      const validSortOrder = allowedSortOrders.includes(sortOrder.toUpperCase())
+        ? sortOrder.toUpperCase()
+        : "DESC";
 
-      // SQL query to search across all fields, including the 'body' field inside the 'data' JSONB column
+      // Use ILIKE for case-insensitive pattern matching
+      const ilikeQuery = `
+        (data::text ILIKE '%' || :query || '%') OR
+        (data->>'body' ILIKE '%' || :query || '%') OR
+        (data->>'postTitle' ILIKE '%' || :query || '%') OR
+        (data->>'description' ILIKE '%' || :query || '%') OR
+        (data->>'postDate' ILIKE '%' || :query || '%') OR
+        (data->>'titleOfTheWork' ILIKE '%' || :query || '%') OR 
+        (data->>'roleInThePlay' ILIKE '%' || :query || '%') OR
+        (data->>'manager' ILIKE '%' || :query || '%') OR
+        (data->>'phoneCall' ILIKE '%' || :query || '%') OR
+        (data->>'appearanceFee' ILIKE '%' || :query || '%') 
+      `;
+
+      // Construct SQL query with LIMIT and OFFSET
       const sqlQuery = `
-                SELECT *
-                FROM public.posts
-                WHERE (data->>'body' ILIKE :query)
-                ORDER BY "createdAt" DESC
-                LIMIT :limit OFFSET :offset
-            `;
+        SELECT *
+        FROM public.posts
+        WHERE ${ilikeQuery}
+        ORDER BY "${validSortBy}" ${validSortOrder}
+        LIMIT :limit OFFSET :offset
+      `;
 
-      // Execute the query with pagination, using Sequelize's query method
-      const [posts, metadata] = await sequelize.query(sqlQuery, {
-        replacements: {
-          query: searchQuery,
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-        },
-      });
-
-      // Get the total count of matching posts (for pagination)
+      // Count total matching posts for pagination
       const countQuery = `
-                SELECT COUNT(*) AS count
-                FROM posts
-                WHERE 
-                    (data::text ILIKE :query OR
-                    data->>'body' ILIKE :query)
-            `;
+        SELECT COUNT(*) AS count
+        FROM public.posts
+        WHERE ${ilikeQuery}
+      `;
 
-      // Execute the count query
-      const [[{ count }]] = await sequelize.query(countQuery, {
-        replacements: { query: searchQuery },
+      // Execute count query with correct destructuring
+      const [{ count }] = await sequelize.query(countQuery, {
+        replacements: { query },
+        type: sequelize.QueryTypes.SELECT,
       });
-      // Extract the `data` column from each post
-      const dataFields = posts.map((post) => post.data);
 
-      // Calculate pagination details
-      const totalPages = Math.ceil(count / limit);
-
-      // Return the results with pagination metadata
-      res.json({
-        posts: {
-          data: posts,
+      // Execute select query
+      const posts = await sequelize.query(sqlQuery, {
+        replacements: {
+          query,
+          limit,
+          offset,
         },
-        data: dataFields,
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+      // Calculate pagination metadata
+      const totalItems = parseInt(count, 10);
+      const totalPages = Math.ceil(totalItems / limit);
+
+      // Return response with paginated posts
+      res.json({
+        posts: { data: posts },
         pagination: {
-          currentPage: parseInt(page),
+          totalItems,
           totalPages,
-          totalItems: count,
-          itemsPerPage: parseInt(limit),
-          hasNextPage: page < totalPages,
-          hasPreviousPage: page > 1,
+          currentPage,
+          pageSize: limit,
+          hasNextPage: currentPage < totalPages,
+          hasPreviousPage: currentPage > 1,
         },
       });
     } catch (error) {
       console.error("Error searching posts:", error);
-      res.status(500).json({
-        message: "Failed to search posts",
-        error: error.message,
+      res
+        .status(500)
+        .json({ message: "Failed to search posts", error: error.message });
+    }
+  },
+  async filterPosts(req, res) {
+    try {
+      // Extract query parameters
+      const {
+        recruitmentGender,
+        sortBy = "createdAt",
+        sortOrder = "DESC",
+        page = 1,
+        pageSize = 10,
+      } = req.query;
+
+      // Convert page and pageSize to integers and set default values if necessary
+      const currentPage = parseInt(page, 10) > 0 ? parseInt(page, 10) : 1;
+      const limit = parseInt(pageSize, 10) > 0 ? parseInt(pageSize, 10) : 10;
+      const offset = (currentPage - 1) * limit;
+
+      // Validate sortBy and sortOrder
+      const allowedSortFields = ["createdAt", "updatedAt", "id"];
+      const allowedSortOrders = ["ASC", "DESC"];
+      const validSortBy = allowedSortFields.includes(sortBy)
+        ? sortBy
+        : "createdAt";
+      const validSortOrder = allowedSortOrders.includes(sortOrder.toUpperCase())
+        ? sortOrder.toUpperCase()
+        : "DESC";
+
+      // Build WHERE conditions
+      let whereConditions = [];
+      let replacements = {};
+
+      if (recruitmentGender) {
+        whereConditions.push(
+          `(data ? 'recruitmentGender' AND data->>'recruitmentGender' = :recruitmentGender)`
+        );
+        replacements.recruitmentGender = recruitmentGender;
+      }
+
+      const whereClause =
+        whereConditions.length > 0 ? whereConditions.join(" AND ") : "TRUE";
+
+      // Construct SQL query with LIMIT and OFFSET
+      const sqlQuery = `
+                SELECT *
+                FROM public.posts
+                WHERE ${whereClause}
+                ORDER BY "${validSortBy}" ${validSortOrder}
+                LIMIT :limit OFFSET :offset
+            `;
+
+      // Add limit and offset to replacements
+      replacements.limit = limit;
+      replacements.offset = offset;
+
+      // Execute select query
+      const [postsResult] = await sequelize.query(sqlQuery, {
+        replacements,
       });
+      const posts = postsResult;
+
+      // Optionally, get the total count for pagination metadata
+      const countQuery = `
+                SELECT COUNT(*) AS count
+                FROM public.posts
+                WHERE ${whereClause}
+            `;
+      const [countResult] = await sequelize.query(countQuery, {
+        replacements,
+      });
+      const totalItems = parseInt(countResult[0].count, 10);
+      const totalPages = Math.ceil(totalItems / limit);
+
+      // Return response with filtered and paginated posts
+      res.json({
+        posts: { data: posts },
+        pagination: {
+          totalItems,
+          totalPages,
+          currentPage,
+          pageSize: limit,
+          hasNextPage: currentPage < totalPages,
+          hasPreviousPage: currentPage > 1,
+        },
+      });
+    } catch (error) {
+      console.error("Error filtering posts:", error);
+      res
+        .status(500)
+        .json({ message: "Failed to filter posts", error: error.message });
     }
   },
 };

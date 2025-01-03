@@ -22,7 +22,7 @@ export default function initPostModel(sequelize) {
                 primaryKey: true,
             },
             postId: {
-                type: DataTypes.JSON,
+                type: DataTypes.STRING,
                 allowNull: false,
             },
             isFavorite: {
