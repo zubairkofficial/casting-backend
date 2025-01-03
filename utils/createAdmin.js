@@ -7,10 +7,10 @@ dotenv.config();
 
 // Create a connection pool
 const pool = new Pool({
-  user: "postgres",
+  user: "muhaffan945",
   host: "localhost",
   database: "casting",
-  password: "root",
+  password: "azzan945",
   port: process.env.DB_PORT || 5432, // Default PostgreSQL port is 5432
 });
 
@@ -20,7 +20,7 @@ const insertAdminUser = async () => {
   const adminUserData = {
     name: "Admin",
     email: "admin@gmail.com",
-    password: "12345678", // In a real-world scenario, hash the password
+    password: "$2b$10$gMOpXY1xua6q7n27cSW8cu6uLb6M7GOWAbGOWj6REc7hLK9t6hjwy", // In a real-world scenario, hash the password
     username: "admin",
     isActive: true,
     role: "admin",
