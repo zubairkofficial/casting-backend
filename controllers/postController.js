@@ -419,4 +419,132 @@ export const postController = {
         .json({ message: "Failed to filter posts", error: error.message });
     }
   },
+  
+  async dateFilter(req, res) {
+    try {
+      // Extract query parameters
+      const {
+        startDate,
+        endDate,
+        page = 1,
+        pageSize = 10,
+        sortBy = "createdAt",
+        sortOrder = "DESC",
+      } = req.query;
+
+      // Validate required date parameters
+      if (!startDate || !endDate) {
+        return res.status(400).json({
+          error: "Both startDate and endDate are required in YYYY-MM-DD format.",
+        });
+      }
+
+      // Validate date formats using regex
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
+        return res.status(400).json({
+          error: "startDate and endDate must be in YYYY-MM-DD format.",
+        });
+      }
+
+      // Convert to Date objects and validate logical order
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      if (isNaN(start) || isNaN(end)) {
+        return res.status(400).json({
+          error: "Invalid startDate or endDate provided.",
+        });
+      }
+
+      if (start > end) {
+        return res.status(400).json({
+          error: "startDate cannot be after endDate.",
+        });
+      }
+
+      // Pagination calculations
+      const currentPage = parseInt(page, 10) > 0 ? parseInt(page, 10) : 1;
+      const limit = parseInt(pageSize, 10) > 0 ? parseInt(pageSize, 10) : 10;
+      const offset = (currentPage - 1) * limit;
+
+      // Validate sortBy and sortOrder
+      const allowedSortFields = ["createdAt", "updatedAt", "id"];
+      const allowedSortOrders = ["ASC", "DESC"];
+      const validSortBy = allowedSortFields.includes(sortBy)
+        ? sortBy
+        : "createdAt";
+      const validSortOrder = allowedSortOrders.includes(
+        sortOrder.toUpperCase()
+      )
+        ? sortOrder.toUpperCase()
+        : "DESC";
+
+      // SQL Query to filter based on date range
+      const sqlQuery = `
+        SELECT *
+        FROM public.posts
+        WHERE TO_DATE(
+                REPLACE(
+                  REPLACE(
+                    REPLACE(data->>'postDate', '년 ', '-'),
+                    '월 ', '-'),
+                  '일 ', ' '
+                ),
+                'YYYY-MM-DD HH24:MI:SS'
+              )::date BETWEEN :startDate AND :endDate
+        ORDER BY "${validSortBy}" ${validSortOrder}
+        LIMIT :limit OFFSET :offset
+      `;
+
+      // SQL Query to count total matching records
+      const countQuery = `
+        SELECT COUNT(*) AS count
+        FROM public.posts
+        WHERE TO_DATE(
+                REPLACE(
+                  REPLACE(
+                    REPLACE(data->>'postDate', '년 ', '-'),
+                    '월 ', '-'),
+                  '일 ', ' '
+                ),
+                'YYYY-MM-DD HH24:MI:SS'
+              )::date BETWEEN :startDate AND :endDate
+      `;
+
+      // Execute count query
+      const countResult = await sequelize.query(countQuery, {
+        replacements: { startDate, endDate },
+        type: sequelize.QueryTypes.SELECT,
+      });
+      const totalItems = parseInt(countResult[0].count, 10);
+      const totalPages = Math.ceil(totalItems / limit);
+
+      // Execute select query
+      const posts = await sequelize.query(sqlQuery, {
+        replacements: { startDate, endDate, limit, offset },
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+      // Return response with paginated posts
+      res.json({
+        posts: { data: posts },
+        pagination: {
+          totalItems,
+          totalPages,
+          currentPage,
+          pageSize: limit,
+          hasNextPage: currentPage < totalPages,
+          hasPreviousPage: currentPage > 1,
+        },
+      });
+    } catch (error) {
+      console.error("Error filtering posts by date:", error);
+      res.status(500).json({
+        message: "Failed to filter posts by date",
+        error: error.message,
+      });
+    }
+  },
+
 };

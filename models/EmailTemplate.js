@@ -11,6 +11,7 @@ export default function initEmailTemplateModel(sequelize) {
             if (errors.length > 0) {
                 throw new Error('Validation failed: ' + errors.map(err => err.toString()).join(', '));
             }
+
         }
     }
 
