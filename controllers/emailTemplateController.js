@@ -29,7 +29,7 @@ export const emailTemplateController = {
   async createTemplate(req, res) {
     try {
       const { title, template } = req.body;
-
+      const userId = req.user.id;
       // Extract variables from content using regex
       const variableRegex = /\[(.*?)\]/g;
       const variables = [
@@ -42,8 +42,9 @@ export const emailTemplateController = {
         title,
         template,
         variables,
+        createdBy: userId
       });
-  
+
       res.status(201).json(content);
 
     } catch (error) {
@@ -188,13 +189,13 @@ export const emailTemplateController = {
       const post = await Post.findOne({
         where: Number(postId),
       });
-    
+
       // Prepare the email message with proper MIME type
       const emailContent = [
         "MIME-Version: 1.0",
         "Content-Type: text/html; charset=utf-8",
         `From: ${userEmail.email}`,
-        `To: ahsan.yousaf1828@gmail.com`,
+        `To: deima10047@gmail.com`,
         `Subject: ${subject || "No Subject"}`,
         "",
         content, // The HTML content will now be rendered properly
@@ -230,5 +231,5 @@ export const emailTemplateController = {
     }
   },
 
- 
+
 };
