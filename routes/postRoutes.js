@@ -1,8 +1,10 @@
 import { postController } from '../controllers/postController.js';
 import express from 'express';
+import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
+router.use(authenticateToken);
 // ... existing routes ...
 router.get('/search', postController.searchPosts);
 

@@ -1,3 +1,4 @@
+// userController.js
 import { User } from '../models/index.js';
 import bcrypt from 'bcrypt';
 
@@ -5,7 +6,7 @@ export const userController = {
     // Create a new user
     async create(req, res) {
         try {
-            const { name, email, password, username, role = 'user' } = req.body;
+            const { name, email, password, username, role = 'admin' } = req.body;
 
             // Check if email already exists
             const existingEmail = await User.findOne({ where: { email } });
@@ -15,6 +16,13 @@ export const userController = {
                 });
             }
 
+            if (username.length < 4) {
+                return res.status(400).json({
+                    message: 'Username must be 4 characters long'
+                });
+            }
+
+
             // Check if username already exists
             const existingUsername = await User.findOne({ where: { username } });
             if (existingUsername) {
@@ -22,6 +30,9 @@ export const userController = {
                     message: 'Username already taken'
                 });
             }
+
+            // Hash the password before storing
+      
 
             const user = await User.create({
                 name,
@@ -64,6 +75,7 @@ export const userController = {
 
             const { count, rows: users } = await User.findAndCountAll({
                 attributes: ['id', 'name', 'email', 'username', 'role', 'isActive', 'createdAt'],
+                where: { isActive: true, role: ['admin', 'user'] }, // Only fetch active users
                 limit,
                 offset,
                 order: [['createdAt', 'DESC']]
@@ -93,7 +105,7 @@ export const userController = {
                 attributes: ['id', 'name', 'email', 'username', 'role', 'isActive', 'createdAt']
             });
 
-            if (!user) {
+            if (!user || !user.isActive) {
                 return res.status(404).json({
                     message: 'User not found'
                 });
@@ -117,7 +129,7 @@ export const userController = {
 
             const user = await User.findByPk(id);
 
-            if (!user) {
+            if (!user || !user.isActive) {
                 return res.status(404).json({
                     message: 'User not found'
                 });
@@ -143,14 +155,18 @@ export const userController = {
                 }
             }
 
-            // Update user fields
+            // Prepare update data
             const updateData = {
                 ...(name && { name }),
                 ...(email && { email }),
                 ...(username && { username }),
-                ...(role && { role }),
-                ...(password && { password }) // Password will be hashed by model hook
+                ...(role && { role })
             };
+
+            // Hash the new password if provided
+            if (password) {
+                updateData.password = password
+            }
 
             await user.update(updateData);
 
@@ -170,7 +186,35 @@ export const userController = {
                 error: error.message
             });
         }
-    }
+    },
 
-    
+    // Delete (soft delete) a user by ID
+    async deleteUser(req, res) {
+        try {
+            const { id } = req.params;
+
+            // Find the user by ID
+            const user = await User.findByPk(id);
+
+            // Check if user exists and is active
+            if (!user || !user.isActive) {
+                return res.status(404).json({
+                    message: 'User not found'
+                });
+            }
+
+            // Perform soft delete by setting isActive to false
+            await user.update({ isActive: false });
+
+            res.status(200).json({
+                message: 'User deleted successfully'
+            });
+        } catch (error) {
+            console.error('Error deleting user:', error);
+            res.status(500).json({
+                message: 'Failed to delete user',
+                error: error.message
+            });
+        }
+    }
 };

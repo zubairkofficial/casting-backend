@@ -11,7 +11,6 @@ export default function initEmailTemplateModel(sequelize) {
             if (errors.length > 0) {
                 throw new Error('Validation failed: ' + errors.map(err => err.toString()).join(', '));
             }
-
         }
     }
 
@@ -63,6 +62,16 @@ export default function initEmailTemplateModel(sequelize) {
                 type: DataTypes.DATE,
                 allowNull: false,
                 defaultValue: DataTypes.NOW
+            },
+            createdBy: { // Add this field
+                type: DataTypes.UUID, // Assuming User's primary key is INTEGER
+                allowNull: false,
+                references: {
+                    model: 'users', // Ensure this matches your User table name
+                    key: 'id',
+                },
+                onUpdate: 'CASCADE',
+                onDelete: 'SET NULL',
             }
         },
         {
@@ -114,4 +123,4 @@ export default function initEmailTemplateModel(sequelize) {
     };
 
     return EmailTemplate;
-} 
+}

@@ -24,7 +24,7 @@ const Model = initModelModel(sequelize);
 const EmailTemplate = initEmailTemplateModel(sequelize);
 const Post = initPostModel(sequelize);
 
-// Define associations between models
+// Define associations between User and UserEmail
 User.hasMany(UserEmail, {
     foreignKey: 'createdBy',
     as: 'userEmails'
@@ -34,6 +34,40 @@ UserEmail.belongsTo(User, {
     foreignKey: 'createdBy',
     as: 'creator'
 });
+
+// Define associations between User and Post
+User.hasMany(Post, {
+    foreignKey: 'createdBy',
+    as: 'posts'
+});
+
+Post.belongsTo(User, {
+    foreignKey: 'createdBy',
+    as: 'creator'
+});
+
+// Define associations between User and EmailTemplate
+User.hasMany(EmailTemplate, {
+    foreignKey: 'createdBy',
+    as: 'emailTemplates'
+});
+
+EmailTemplate.belongsTo(User, {
+    foreignKey: 'createdBy',
+    as: 'creator'
+});
+
+
+User.hasMany(Model, {
+    foreignKey: 'createdBy',
+    as: 'models'
+});
+
+Model.belongsTo(User, {
+    foreignKey: 'createdBy',
+    as: 'creator'
+});
+
 
 // Export models and sequelize instance
 export { sequelize, User, UserEmail, Model, EmailTemplate, Post };

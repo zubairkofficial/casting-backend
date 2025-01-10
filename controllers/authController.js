@@ -213,7 +213,7 @@ export const signin = async (req, res) => {
         }
 
         // Generate a token (optional, if you want to use JWT for session management)
-        const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '12h' });
+        const token = jwt.sign({ id: user.id, email: user.email,role: user.role }, process.env.JWT_SECRET, { expiresIn: '12h' });
 
         res.status(200).json({
             message: 'Login successful',

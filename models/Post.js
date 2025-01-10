@@ -1,9 +1,9 @@
-import { DataTypes, Model } from 'sequelize';
+import { DataTypes, Model as SequelizeModel } from 'sequelize';
 import { validate } from 'class-validator';
 import { plainToClass } from 'class-transformer';
 
 export default function initPostModel(sequelize) {
-    class Post extends Model {
+    class Post extends SequelizeModel {
         // Custom validation logic
         static async validatePost(postData) {
             const postInstance = plainToClass(Post, postData);
@@ -33,10 +33,24 @@ export default function initPostModel(sequelize) {
                 type: DataTypes.BOOLEAN,
                 defaultValue: false,
             },
+            postDate: {
+                type: DataTypes.STRING,
+                defaultValue: null,
+            },
             data: {
                 type: DataTypes.JSONB,
-                defaultValue: false,
                 allowNull: false,
+                defaultValue: {},
+            },
+            createdBy: {  // Add this field
+                type: DataTypes.UUID, // Assuming User's primary key is INTEGER
+                allowNull: false,
+                references: {
+                    model: 'users', // Ensure this matches your User table name
+                    key: 'id',
+                },
+                onUpdate: 'CASCADE',
+                onDelete: 'SET NULL',
             }
         },
         {
@@ -44,6 +58,7 @@ export default function initPostModel(sequelize) {
             modelName: 'Post',
             tableName: 'posts',
             paranoid: true, // Enable soft deletes
+            timestamps: true, // Ensure timestamps are enabled
         }
     );
 
@@ -57,4 +72,4 @@ export default function initPostModel(sequelize) {
     });
 
     return Post;
-} 
+}

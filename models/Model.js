@@ -101,6 +101,16 @@ export default function initModelModel(sequelize) {
                 defaultValue: DataTypes.NOW,
 
             },
+            createdBy: { // Add this field
+                type: DataTypes.UUID, // Assuming User's primary key is INTEGER
+                allowNull: false,
+                references: {
+                    model: 'users', // Ensure this matches your User table name
+                    key: 'id',
+                },
+                onUpdate: 'CASCADE',
+                onDelete: 'SET NULL',
+            },
             updatedAt: {
                 type: DataTypes.DATE,
                 allowNull: false,

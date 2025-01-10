@@ -65,10 +65,10 @@ export default function initUserModel(sequelize) {
                 },
             },
             role: {
-                type: DataTypes.ENUM('user', 'admin'),
+                type: DataTypes.ENUM('user', 'admin', 'superadmin'),
                 allowNull: false,
                 validate: {
-                    isIn: [['user', 'admin']], // Ensure role is either student or admin
+                    isIn: [['user', 'admin', 'superadmin']], // Ensure role is either student or admin
                 },
             },
             isActive: {
@@ -99,7 +99,7 @@ export default function initUserModel(sequelize) {
             hooks: {
                 beforeSave: User.hashPassword, // Hook to hash password before saving
             },
-            paranoid: true, // Enable soft deletes (adds deletedAt timestamp)
+            paranoid: false, // Enable soft deletes (adds deletedAt timestamp)
         }
     );
 

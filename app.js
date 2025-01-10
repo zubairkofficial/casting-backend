@@ -8,7 +8,7 @@ import sheetsRoutes from './routes/sheetsRoutes.js';
 import modelRoutes from './routes/modelRoutes.js';
 import emailTemplateRoutes from './routes/emailTemplateRoutes.js';
 import postRoutes from './routes/postRoutes.js'
-
+import userRoutes from './routes/userRoutes.js'
 const app = express();
 
 app.use(cors()); // Enable CORS for cross-origin requests
@@ -18,6 +18,7 @@ app.use(express.json()); // Parse JSON request bodies
 
 const v1Router = express.Router();
 v1Router.use('/auth', authRoutes);
+v1Router.use('/users', userRoutes);
 v1Router.use('/user-email', userEmailRoutes);
 v1Router.use('/google-auth', googleAuthRoutes);
 v1Router.use('/job-postings', jobPostingRoutes);

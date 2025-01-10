@@ -7,7 +7,8 @@ export const sheetsController = {
   async getSheetData(req, res) {
     try {
       const { spreadsheetId, sheetName, accountId } = req.params;
-
+      const id = req.user.id;
+      console.log("ADmin id", id)
       // Get the email account with tokens
       const emailAccount = await UserEmail.findOne({
         where: { id: accountId }
@@ -68,7 +69,7 @@ export const sheetsController = {
       const newData = data.filter(item => !existingEmails.has(item.email));
 
       if (newData.length > 0) {
-        await Model.bulkCreate(newData);
+        await Model.bulkCreate({ ...newData, createdBy: req.user.id });
       }
 
       res.json({

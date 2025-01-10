@@ -5,19 +5,20 @@ import { authenticateToken, isAdmin } from '../middleware/auth.js'; // Assuming 
 const router = express.Router();
 
 // Public routes
-router.post('/', userController.create); // Sign up
+// Sign up
 
 // Protected routes
 router.use(authenticateToken);
 
 // User routes
-router.get('/profile/:id', userController.getOne);
-router.put('/profile/:id', userController.update);
-router.put('/change-password/:id', userController.changePassword);
+router.get('/:id', userController.getOne);
+router.put('/:id', userController.update);
+
 
 // Admin only routes
 router.use(isAdmin);
+router.post('/', userController.create); 
 router.get('/', userController.getAll);
-router.delete('/:id', userController.delete);
+router.delete('/:id', userController.deleteUser);
 
 export default router;

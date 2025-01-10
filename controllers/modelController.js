@@ -1,3 +1,4 @@
+import { where } from 'sequelize';
 import { Model } from '../models/index.js';
 
 export class ModelController {
@@ -12,7 +13,6 @@ export class ModelController {
         national,
         stage,
         additionalPic,
-       
         download,
         comcardPhotoURL
       } = req.body;
@@ -26,7 +26,8 @@ export class ModelController {
         stage,
         additionalPic,
         download,
-        comcardPhotoURL
+        comcardPhotoURL,
+        createdBy: req.user.id
       });
 
       res.status(201).json(model);
@@ -38,8 +39,9 @@ export class ModelController {
 
   // Get all models
   async getAll(req, res) {
+    const id = req.user.id;
     try {
-      const models = await Model.findAll();
+      const models = await Model.findAll({where: {createdBy: id}});
       res.json(models);
     } catch (error) {
       console.error('Error fetching models:', error);

@@ -62,16 +62,9 @@ export default function initUserEmailModel(sequelize) {
             modelName: 'UserEmail',
             tableName: 'user_emails',
             timestamps: true,
-            paranoid: true,
-            indexes: [
-                {
-                    unique: true,
-                    fields: ['email', 'createdBy'],
-                    where: {
-                        deletedAt: null
-                    }
-                }
-            ]
+            paranoid: false,
+       
+            
         }
     );
 

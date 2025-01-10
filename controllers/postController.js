@@ -1,76 +1,103 @@
 import { google } from "googleapis";
-import { UserEmail, Post } from "../models/index.js";
+import { UserEmail, Post, User } from "../models/index.js";
 import sequelize from "../models/index.js";
 
 export const postController = {
   async storePosts(req, res) {
     try {
+      const userId = req.user.id;
       const { spreadsheetId, sheetName, accountId } = req.params;
-
+  
       // Get the email account with tokens
       const emailAccount = await UserEmail.findOne({
         where: { id: accountId },
       });
-
+  
       if (!emailAccount) {
         return res.status(404).json({ message: "Email account not found" });
       }
-
+  
       // Create oauth2Client instance
       const oauth2Client = new google.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
         process.env.GOOGLE_CLIENT_SECRET,
         `${process.env.BACKEND_API_URL}google-auth/callback`
       );
-
+  
       oauth2Client.setCredentials({
         access_token: emailAccount.accessToken,
         refresh_token: emailAccount.refreshToken,
         expiry_date: new Date(emailAccount.tokenExpiry).getTime(),
       });
-
+  
       const sheets = google.sheets({ version: "v4", auth: oauth2Client });
-
+  
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
         range: sheetName,
       });
-
+  
       const rows = response.data.values;
       if (!rows || rows.length === 0) {
         return res.status(404).json({ message: "No data found." });
       }
-
+  
       // Convert headers and create post objects
       const headers = rows[0].map((header) =>
         header
           .toLowerCase()
           .replace(/[^a-zA-Z0-9]+(.)/g, (_, chr) => chr.toUpperCase())
       );
-
+  
       const posts = rows.slice(1).map((row) => {
         const postData = {};
         headers.forEach((header, index) => {
           postData[header] = row[index] || "";
         });
+  
+        // Parse the postDate string into a Date object (if available)
+        let postDate = null;
+        if (postData.postDate) {
+          const postDateString = postData.postDate; // e.g., "2024년 11월 13일 17:11:28"
+          const dateParts = postDateString.match(/(\d{4})년 (\d{2})월 (\d{2})일 (\d{2}):(\d{2}):(\d{2})/);
+  
+          if (dateParts) {
+            const [_, year, month, day, hour, minute, second] = dateParts;
+            postDate = new Date(
+              parseInt(year),
+              parseInt(month) - 1, // Months are 0-indexed in JavaScript
+              parseInt(day),
+              parseInt(hour),
+              parseInt(minute),
+              parseInt(second)
+            );
+          } else {
+            console.warn(`Invalid date format: ${postDateString}`);
+          }
+        }
+  
         return {
           postId: postData.postId,
+          postDate: postDate ? postDate.toISOString() : null, // Convert to ISO string or null
           isFavorite: false,
           isEmailSent: false,
           data: postData,
+          createdBy: userId,
         };
       });
+  
       console.log(posts);
+  
       // Find existing posts and create only new ones
       const existingPosts = await Post.findAll();
       const existingEmails = new Set(existingPosts.map((post) => post.postId));
-
+  
       const newPosts = posts.filter((post) => !existingEmails.has(post.postId));
-
+  
       if (newPosts.length > 0) {
         await Post.bulkCreate(newPosts);
       }
-
+  
       res.json({
         message: `Processed ${posts.length} posts. Added ${newPosts.length} new posts.`,
         newPosts: newPosts,
@@ -85,15 +112,18 @@ export const postController = {
     }
   },
   async getAllPosts(req, res) {
+    const id = req.user.id;
+    console.log("Req id", id);
     try {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
       const offset = (page - 1) * limit;
 
       const { count, rows: posts } = await Post.findAndCountAll({
+        where: { createdBy: id },
         limit,
         offset,
-        order: [["createdAt", "DESC"]],
+        order: [["postDate", "DESC"]],
       });
 
       const totalPages = Math.ceil(count / limit);
@@ -114,7 +144,7 @@ export const postController = {
           hasPreviousPage: page > 1,
         },
         data: dataFields, // Sending the `data` column separately
-        
+
       });
     } catch (error) {
       console.error("Error fetching posts:", error);
@@ -155,7 +185,7 @@ export const postController = {
           hasPreviousPage: page > 1,
         },
         data: dataFields, // Sending the `data` column separately
-        
+
       });
     } catch (error) {
       console.error("Error fetching posts:", error);
@@ -419,7 +449,7 @@ export const postController = {
         .json({ message: "Failed to filter posts", error: error.message });
     }
   },
-  
+
   async dateFilter(req, res) {
     try {
       // Extract query parameters

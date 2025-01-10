@@ -13,6 +13,7 @@ const authMiddleware = (req, res, next) => {
     try {
         // Verify token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        console.log("Decoded",decoded);
         req.user = decoded; // Store user data in req.user for further use in controllers
         next();
     } catch (error) {
@@ -22,6 +23,7 @@ const authMiddleware = (req, res, next) => {
 
 // Add isAdmin middleware
 const isAdmin = (req, res, next) => {
+    console.log(req.user);
     // Check if user exists and has role information
     if (!req.user || !req.user.role) {
         return res.status(403).json({ 
@@ -30,9 +32,9 @@ const isAdmin = (req, res, next) => {
     }
 
     // Check if user is an admin
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'superadmin') {
         return res.status(403).json({ 
-            message: 'Access forbidden: Admin privileges required' 
+            message: 'Access forbidden: Super Admin privileges required' 
         });
     }
 

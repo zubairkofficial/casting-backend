@@ -7,6 +7,7 @@ dotenv.config();
 
 const PORT = process.env.PORT || 3000; // Fallback to port 3000 if not specified
 
+
 // Sync database and then start the server
 const startServer = async () => {
     await sequelize.authenticate();

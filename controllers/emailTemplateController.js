@@ -9,8 +9,10 @@ dotenv.config();
 export const emailTemplateController = {
   // Get all templates
   async getAllTemplates(req, res) {
+    const id = req.user.id;
     try {
       const templates = await EmailTemplate.findAll({
+        where: { createdBy: id },
         order: [["createdAt", "DESC"]],
       });
       res.json(templates);
