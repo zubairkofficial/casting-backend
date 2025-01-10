@@ -7,10 +7,10 @@ dotenv.config();
 
 // Create a connection pool
 const pool = new Pool({
-  user: "muhaffan945",
+  user: "postgres",
   host: "localhost",
   database: "casting",
-  password: "azzan945",
+  password: "12345678",
   port: process.env.DB_PORT || 5432, // Default PostgreSQL port is 5432
 });
 
