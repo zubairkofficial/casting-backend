@@ -8,7 +8,8 @@ export const sheetsController = {
     try {
       const { spreadsheetId, sheetName, accountId } = req.params;
       const id = req.user.id;
-      console.log("ADmin id", id)
+      console.log("Admin id", id);
+
       // Get the email account with tokens
       const emailAccount = await UserEmail.findOne({
         where: { id: accountId }
@@ -21,6 +22,7 @@ export const sheetsController = {
       if (!emailAccount.accessToken) {
         return res.status(400).json({ message: 'No access token found for this account' });
       }
+
       // Create new oauth2Client instance
       const oauth2Client = new google.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
@@ -68,13 +70,19 @@ export const sheetsController = {
 
       const newData = data.filter(item => !existingEmails.has(item.email));
 
-      if (newData.length > 0) {
-        await Model.bulkCreate({ ...newData, createdBy: req.user.id });
+      // Add createdBy field to each new data entry
+      const newDataWithCreatedBy = newData.map(item => ({
+        ...item,
+        createdBy: id
+      }));
+
+      if (newDataWithCreatedBy.length > 0) {
+        await Model.bulkCreate(newDataWithCreatedBy);
       }
 
       res.json({
-        message: `Processed ${data.length} records. Added ${newData.length} new records.`,
-        newRecords: newData
+        message: `Processed ${data.length} records. Added ${newDataWithCreatedBy.length} new records.`,
+        newRecords: newDataWithCreatedBy
       });
     } catch (error) {
       console.error('Error fetching sheet data:', error);
