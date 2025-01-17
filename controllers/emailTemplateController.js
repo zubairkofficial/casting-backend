@@ -28,7 +28,7 @@ export const emailTemplateController = {
   // Create new template
   async createTemplate(req, res) {
     try {
-      const { title, template } = req.body;
+      const { title, template,subject } = req.body;
       const userId = req.user.id;
       // Extract variables from content using regex
       const variableRegex = /\[(.*?)\]/g;
@@ -42,6 +42,7 @@ export const emailTemplateController = {
         title,
         template,
         variables,
+        subject,
         createdBy: userId
       });
 
@@ -60,7 +61,7 @@ export const emailTemplateController = {
   async updateTemplate(req, res) {
     try {
       const { id } = req.params;
-      const { title, template } = req.body;
+      const { title, template, subject } = req.body;
 
       const content = await EmailTemplate.findByPk(id);
       if (!content) {
@@ -79,6 +80,7 @@ export const emailTemplateController = {
         title,
         template,
         variables,
+        subject,
       });
 
       res.json(content);
@@ -134,14 +136,8 @@ export const emailTemplateController = {
 
   async sendEmail(req, res) {
     try {
-      const {
-        recipient,
-        subject,
-        content,
-        accountId,
-        postId,
-      } = req.body;
-
+      const { recipient, subject, content, accountId, postId } = req.body;
+  
       // Validate input
       if (!recipient || !content || !accountId) {
         return res.status(400).json({
@@ -153,7 +149,7 @@ export const emailTemplateController = {
           message: "PostId is required",
         });
       }
-
+  
       // Get the user's Gmail account credentials
       const userEmail = await UserEmail.findOne({
         where: {
@@ -161,53 +157,46 @@ export const emailTemplateController = {
           createdBy: req.user.id,
         },
       });
-
+  
       if (!userEmail || !userEmail.accessToken) {
         return res.status(400).json({
           message: "Gmail account not found or not properly connected",
         });
       }
-
+  
       // Create OAuth2 client
       const oauth2Client = new OAuth2Client(
         process.env.GOOGLE_CLIENT_ID,
         process.env.GOOGLE_CLIENT_SECRET,
         `${process.env.BACKEND_API_URL}google-auth/callback`
       );
-
+  
       oauth2Client.setCredentials({
         access_token: userEmail.accessToken,
         refresh_token: userEmail.refreshToken,
       });
-
+  
       // Create Gmail API client
       const gmail = google.gmail({ version: "v1", auth: oauth2Client });
-
-      // Optional: If a template ID is provided, fetch and process the template
-      let processedContent = content;
-
-      const post = await Post.findOne({
-        where: Number(postId),
-      });
-
+  
       // Prepare the email message with proper MIME type
       const emailContent = [
         "MIME-Version: 1.0",
         "Content-Type: text/html; charset=utf-8",
         `From: ${userEmail.email}`,
-        `To: deima10047@gmail.com`,
+        `To: ${recipient}`,
         `Subject: ${subject || "No Subject"}`,
         "",
         content, // The HTML content will now be rendered properly
       ].join("\n");
-
+  
       // Encode the email in base64
       const encodedMessage = Buffer.from(emailContent)
         .toString("base64")
         .replace(/\+/g, "-")
         .replace(/\//g, "_")
         .replace(/=+$/, "");
-
+  
       // Send the email using Gmail API
       const response = await gmail.users.messages.send({
         userId: "me",
@@ -215,9 +204,16 @@ export const emailTemplateController = {
           raw: encodedMessage,
         },
       });
-      post.isEmailSent = true;
-      await post.save();
-
+  
+      // Update the post status
+      const post = await Post.findOne({
+        where: { postId: postId },
+      });
+      if (post) {
+        post.isEmailSent = true;
+        await post.save();
+      }
+  
       res.status(200).json({
         message: "Email sent successfully",
         messageId: response.data.id,
@@ -229,7 +225,7 @@ export const emailTemplateController = {
         error: error.message,
       });
     }
-  },
+  }
 
 
 };

@@ -7,60 +7,60 @@ export const postController = {
     try {
       const userId = req.user.id;
       const { spreadsheetId, sheetName, accountId } = req.params;
-  
+
       // Get the email account with tokens
       const emailAccount = await UserEmail.findOne({
         where: { id: accountId },
       });
-  
+
       if (!emailAccount) {
         return res.status(404).json({ message: "Email account not found" });
       }
-  
+
       // Create oauth2Client instance
       const oauth2Client = new google.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
         process.env.GOOGLE_CLIENT_SECRET,
         `${process.env.BACKEND_API_URL}google-auth/callback`
       );
-  
+
       oauth2Client.setCredentials({
         access_token: emailAccount.accessToken,
         refresh_token: emailAccount.refreshToken,
         expiry_date: new Date(emailAccount.tokenExpiry).getTime(),
       });
-  
+
       const sheets = google.sheets({ version: "v4", auth: oauth2Client });
-  
+
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
         range: sheetName,
       });
-  
+
       const rows = response.data.values;
       if (!rows || rows.length === 0) {
         return res.status(404).json({ message: "No data found." });
       }
-  
+
       // Convert headers and create post objects
       const headers = rows[0].map((header) =>
         header
           .toLowerCase()
           .replace(/[^a-zA-Z0-9]+(.)/g, (_, chr) => chr.toUpperCase())
       );
-  
+
       const posts = rows.slice(1).map((row) => {
         const postData = {};
         headers.forEach((header, index) => {
           postData[header] = row[index] || "";
         });
-  
+
         // Parse the postDate string into a Date object (if available)
         let postDate = null;
         if (postData.postDate) {
           const postDateString = postData.postDate; // e.g., "2024년 11월 13일 17:11:28"
           const dateParts = postDateString.match(/(\d{4})년 (\d{2})월 (\d{2})일 (\d{2}):(\d{2}):(\d{2})/);
-  
+
           if (dateParts) {
             const [_, year, month, day, hour, minute, second] = dateParts;
             postDate = new Date(
@@ -75,7 +75,7 @@ export const postController = {
             console.warn(`Invalid date format: ${postDateString}`);
           }
         }
-  
+
         return {
           postId: postData.postId,
           postDate: postDate ? postDate.toISOString() : null, // Convert to ISO string or null
@@ -85,19 +85,19 @@ export const postController = {
           createdBy: userId,
         };
       });
-  
+
       console.log(posts);
-  
+
       // Find existing posts and create only new ones
       const existingPosts = await Post.findAll();
       const existingEmails = new Set(existingPosts.map((post) => post.postId));
-  
+
       const newPosts = posts.filter((post) => !existingEmails.has(post.postId));
-  
+
       if (newPosts.length > 0) {
         await Post.bulkCreate(newPosts);
       }
-  
+
       res.json({
         message: `Processed ${posts.length} posts. Added ${newPosts.length} new posts.`,
         newPosts: newPosts,
@@ -161,7 +161,7 @@ export const postController = {
       const offset = (page - 1) * limit;
 
       const { count, rows: posts } = await Post.findAndCountAll({
-        where: { isEmailSent: true },
+        where: { isEmailSent: true, createdBy: req.user.id },
         limit,
         offset,
         order: [["createdAt", "DESC"]],
@@ -203,7 +203,7 @@ export const postController = {
       const offset = (page - 1) * limit;
 
       const { count, rows: posts } = await Post.findAndCountAll({
-        where: { isFavorite: true },
+        where: { isFavorite: true,  createdBy: req.user.id  },
         limit,
         offset,
         order: [["createdAt", "DESC"]],
@@ -308,7 +308,7 @@ export const postController = {
       const sqlQuery = `
         SELECT *
         FROM public.posts
-        WHERE ${ilikeQuery}
+        WHERE (${ilikeQuery}) AND "createdBy" = :userId
         ORDER BY "${validSortBy}" ${validSortOrder}
         LIMIT :limit OFFSET :offset
       `;
@@ -317,12 +317,12 @@ export const postController = {
       const countQuery = `
         SELECT COUNT(*) AS count
         FROM public.posts
-        WHERE ${ilikeQuery}
+        WHERE (${ilikeQuery}) AND "createdBy" = :userId
       `;
 
       // Execute count query with correct destructuring
       const [{ count }] = await sequelize.query(countQuery, {
-        replacements: { query },
+        replacements: { query, userId: req.user.id },
         type: sequelize.QueryTypes.SELECT,
       });
 
@@ -332,6 +332,7 @@ export const postController = {
           query,
           limit,
           offset,
+          userId: req.user.id
         },
         type: sequelize.QueryTypes.SELECT,
       });
@@ -364,19 +365,19 @@ export const postController = {
       // Extract query parameters
       const {
         recruitmentGender,
-        sortBy = "createdAt",
+        sortBy = "postDate",
         sortOrder = "DESC",
         page = 1,
-        pageSize = 10,
+        pageSize = 50,
       } = req.query;
 
       // Convert page and pageSize to integers and set default values if necessary
       const currentPage = parseInt(page, 10) > 0 ? parseInt(page, 10) : 1;
-      const limit = parseInt(pageSize, 10) > 0 ? parseInt(pageSize, 10) : 10;
+      const limit = parseInt(pageSize, 10) > 0 ? parseInt(pageSize, 10) : 50;
       const offset = (currentPage - 1) * limit;
 
       // Validate sortBy and sortOrder
-      const allowedSortFields = ["createdAt", "updatedAt", "id"];
+      const allowedSortFields = ["createdAt", "updatedAt", "id", "postDate"];
       const allowedSortOrders = ["ASC", "DESC"];
       const validSortBy = allowedSortFields.includes(sortBy)
         ? sortBy
@@ -386,8 +387,8 @@ export const postController = {
         : "DESC";
 
       // Build WHERE conditions
-      let whereConditions = [];
-      let replacements = {};
+      let whereConditions = ['\"createdBy\" = :userId'];
+      let replacements = { userId: req.user.id };
 
       if (recruitmentGender) {
         whereConditions.push(
@@ -407,6 +408,7 @@ export const postController = {
                 ORDER BY "${validSortBy}" ${validSortOrder}
                 LIMIT :limit OFFSET :offset
             `;
+
 
       // Add limit and offset to replacements
       replacements.limit = limit;
@@ -437,7 +439,7 @@ export const postController = {
           totalItems,
           totalPages,
           currentPage,
-          pageSize: limit,
+          itemsPerPage: limit,
           hasNextPage: currentPage < totalPages,
           hasPreviousPage: currentPage > 1,
         },
@@ -457,8 +459,8 @@ export const postController = {
         startDate,
         endDate,
         page = 1,
-        pageSize = 10,
-        sortBy = "createdAt",
+        pageSize = 50,
+        sortBy = "postDate",
         sortOrder = "DESC",
       } = req.query;
 
@@ -495,7 +497,7 @@ export const postController = {
 
       // Pagination calculations
       const currentPage = parseInt(page, 10) > 0 ? parseInt(page, 10) : 1;
-      const limit = parseInt(pageSize, 10) > 0 ? parseInt(pageSize, 10) : 10;
+      const limit = parseInt(pageSize, 10) > 0 ? parseInt(pageSize, 10) : 50;
       const offset = (currentPage - 1) * limit;
 
       // Validate sortBy and sortOrder
@@ -523,6 +525,7 @@ export const postController = {
                 ),
                 'YYYY-MM-DD HH24:MI:SS'
               )::date BETWEEN :startDate AND :endDate
+        AND "createdBy" = :userId
         ORDER BY "${validSortBy}" ${validSortOrder}
         LIMIT :limit OFFSET :offset
       `;
@@ -540,11 +543,12 @@ export const postController = {
                 ),
                 'YYYY-MM-DD HH24:MI:SS'
               )::date BETWEEN :startDate AND :endDate
+        AND "createdBy" = :userId
       `;
 
       // Execute count query
       const countResult = await sequelize.query(countQuery, {
-        replacements: { startDate, endDate },
+        replacements: { startDate, endDate, userId: req.user.id },
         type: sequelize.QueryTypes.SELECT,
       });
       const totalItems = parseInt(countResult[0].count, 10);
@@ -552,7 +556,13 @@ export const postController = {
 
       // Execute select query
       const posts = await sequelize.query(sqlQuery, {
-        replacements: { startDate, endDate, limit, offset },
+        replacements: { 
+          startDate, 
+          endDate, 
+          limit, 
+          offset,
+          userId: req.user.id 
+        },
         type: sequelize.QueryTypes.SELECT,
       });
 
@@ -563,7 +573,7 @@ export const postController = {
           totalItems,
           totalPages,
           currentPage,
-          pageSize: limit,
+          itemsPerPage: limit,
           hasNextPage: currentPage < totalPages,
           hasPreviousPage: currentPage > 1,
         },

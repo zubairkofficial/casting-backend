@@ -29,6 +29,10 @@ export default function initEmailTemplateModel(sequelize) {
                     len: [1, 255]
                 }
             },
+            subject: {
+                type: DataTypes.STRING,
+                allowNull: true,
+            },
             template: {
                 type: DataTypes.TEXT,
                 allowNull: false,

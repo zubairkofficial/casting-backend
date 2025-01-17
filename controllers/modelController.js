@@ -6,7 +6,7 @@ export class ModelController {
   async create(req, res) {
     try {
       const {
-        comcardId,
+        comcardNo,
         image,
         nameEng,
         nameKor,
@@ -14,11 +14,27 @@ export class ModelController {
         stage,
         additionalPic,
         download,
-        comcardPhotoURL
       } = req.body;
 
+      // Input validation
+      if (!comcardNo || !nameEng || !nameKor) {
+        return res.status(400).json({
+          error: 'Validation Error',
+          details: 'ComcardNo, nameEng, and nameKor are required fields'
+        });
+      }
+
+      // Check if model with same comcardNo already exists
+      const existingModel = await Model.findOne({ where: { comcardNo } });
+      if (existingModel) {
+        return res.status(409).json({
+          error: 'Duplicate Error',
+          details: 'A model with this comcardNo already exists'
+        });
+      }
+
       const model = await Model.create({
-        comcardNo: comcardId,
+        comcardNo,
         image,
         nameEng,
         nameKor,
@@ -26,14 +42,32 @@ export class ModelController {
         stage,
         additionalPic,
         download,
-        comcardPhotoURL,
         createdBy: req.user.id
       });
 
       res.status(201).json(model);
     } catch (error) {
       console.error('Error creating model:', error);
-      res.status(500).json({ error: 'Failed to create model', details: error.message });
+      
+      // Handle different types of errors
+      if (error.name === 'SequelizeValidationError') {
+        return res.status(400).json({
+          error: 'Validation Error',
+          details: error.errors.map(e => e.message)
+        });
+      }
+      
+      if (error.name === 'SequelizeUniqueConstraintError') {
+        return res.status(409).json({
+          error: 'Duplicate Error',
+          details: 'A model with these unique fields already exists'
+        });
+      }
+
+      res.status(500).json({
+        error: 'Internal Server Error',
+        details: 'Failed to create model'
+      });
     }
   }
 
