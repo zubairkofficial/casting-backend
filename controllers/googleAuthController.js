@@ -114,7 +114,7 @@ export const googleAuthController ={
         return res.status(404).json({ message: 'Account not found' });
       }
 
-      await emailAccount.truncate();
+      await emailAccount.destroy();
       res.json({ message: 'Account disconnected successfully' });
     } catch (error) {
       console.error('Error disconnecting account:', error);
@@ -127,66 +127,97 @@ export const googleAuthController ={
     try {
       const { folderId = 'root' } = req.query;
       const { accountId } = req.params;
-
+  
       // Get the email account with tokens
       const emailAccount = await UserEmail.findOne({
         where: { id: accountId, createdBy: req.user.id },
       });
-
+  
       if (!emailAccount) {
         return res.status(404).json({ message: 'Email account not found' });
       }
-
+  
       // Set credentials for OAuth2 client
       oauth2Client.setCredentials({
         access_token: emailAccount.accessToken,
         refresh_token: emailAccount.refreshToken,
         expiry_date: emailAccount.tokenExpiry,
       });
-
-      // Listen for token updates
-      oauth2Client.on('tokens', (tokens) => {
-        if (tokens.access_token) {
-          emailAccount.update({
-            accessToken: tokens.access_token,
-            refreshToken: tokens.refresh_token || emailAccount.refreshToken,
-            tokenExpiry: new Date(tokens.expiry_date).toISOString(),
+  
+      // Function to fetch Drive files
+      const fetchDriveFiles = async () => {
+        const drive = google.drive({ version: 'v3', auth: oauth2Client });
+        let allFiles = [];
+        let pageToken = null;
+  
+        do {
+          const response = await drive.files.list({
+            q: `'${folderId}' in parents and trashed = false`,
+            pageSize: 100,
+            orderBy: 'folder,name',
+            fields: 'nextPageToken, files(id, name, mimeType, thumbnailLink, modifiedTime)',
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+            pageToken: pageToken,
           });
+  
+          allFiles = allFiles.concat(response.data.files);
+          pageToken = response.data.nextPageToken;
+        } while (pageToken);
+  
+        return allFiles;
+      };
+  
+      try {
+        // Attempt to fetch Drive files
+        const files = await fetchDriveFiles();
+        res.json(files);
+      } catch (error) {
+        console.error('Error fetching Drive files:', error);
+  
+        // Check if the error is due to an invalid or expired token
+        if (error.response?.status === 401 || error.message.includes('invalid_grant')) {
+          console.log('Token expired or revoked. Attempting to refresh token...');
+  
+          try {
+            // Refresh the token
+            const { tokens } = await oauth2Client.refreshToken(emailAccount.refreshToken);
+            console.log('New tokens received:', tokens);
+  
+            // Update the credentials
+            oauth2Client.setCredentials(tokens);
+  
+            // Update the database with new tokens
+            await emailAccount.update({
+              accessToken: tokens.access_token,
+              refreshToken: tokens.refresh_token || emailAccount.refreshToken, // Use existing refresh token if new one is not provided
+              tokenExpiry: new Date(tokens.expiry_date).toISOString(),
+            });
+  
+            console.log('Tokens updated in the database.');
+  
+            // Retry the request with new tokens
+            const files = await fetchDriveFiles();
+            res.json(files);
+          } catch (refreshError) {
+            console.error('Error refreshing token:', refreshError);
+  
+            // If token refresh fails, the refresh token might be invalid or revoked
+            if (refreshError.message.includes('invalid_grant')) {
+              return res.status(401).json({
+                message: 'Token refresh failed. Please reauthenticate your Google account.',
+              });
+            } else {
+              throw refreshError;
+            }
+          }
+        } else {
+          // Handle other errors
+          throw error;
         }
-      });
-
-      // Initialize Google Drive client
-      const drive = google.drive({ version: 'v3', auth: oauth2Client });
-
-      // Fetch all files with pagination
-      let allFiles = [];
-      let pageToken = null;
-
-      do {
-        const response = await drive.files.list({
-          q: `'${folderId}' in parents and trashed = false`,
-          pageSize: 100,
-          orderBy: 'folder,name',
-          fields: 'nextPageToken, files(id, name, mimeType, thumbnailLink, modifiedTime)',
-          supportsAllDrives: true,
-          includeItemsFromAllDrives: true,
-          pageToken: pageToken,
-        });
-
-        allFiles = allFiles.concat(response.data.files);
-        pageToken = response.data.nextPageToken;
-      } while (pageToken);
-
-      res.json(allFiles);
-    } catch (error) {
-      if (error.response && error.response.status === 401) {
-        // Token is invalid or expired
-        return res.status(401).json({
-          message: 'Token expired or invalid. Please reauthenticate.',
-          reauthUrl: `${process.env.FRONTEND_BASE_URL}google-auth/reauthenticate/${req.params.accountId}`,
-        });
       }
-      console.error('Error fetching Drive files:', error);
+    } catch (error) {
+      console.error('Error in getGoogleDriveFiles:', error);
       res.status(500).json({
         message: 'Failed to fetch Drive files',
         error: error.message,
