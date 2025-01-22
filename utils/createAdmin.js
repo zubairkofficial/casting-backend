@@ -7,10 +7,10 @@ dotenv.config();
 
 // Create a connection pool
 const pool = new Pool({
-  user: "postgres",
+  user: "muhaffan945",
   host: "localhost",
-  database: "casting",
-  password: "12345678",
+  database: "castingbackend",
+  password: "azzan945",
   port: process.env.DB_PORT || 5432, // Default PostgreSQL port is 5432
 });
 
@@ -23,7 +23,7 @@ const insertAdminUser = async () => {
     password: "$2b$10$gMOpXY1xua6q7n27cSW8cu6uLb6M7GOWAbGOWj6REc7hLK9t6hjwy", // In a real-world scenario, hash the password
     username: "admin",
     isActive: true,
-    role: "admin",
+    role: "superadmin",
   };
 
   // Step 2: Insert the admin user into the database
@@ -34,7 +34,7 @@ const insertAdminUser = async () => {
   `;
 
   const values = [
-    adminUserData.id  = '4c20ea21-f70e-4bb8-9b2c-3acba1d2fb5c',
+    adminUserData.id  = '4c20ea21-f75e-4bb8-9b2c-3acba1d2fb5c',
     adminUserData.name,
     adminUserData.email,
     adminUserData.password,
