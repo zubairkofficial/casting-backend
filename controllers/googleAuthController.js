@@ -12,13 +12,13 @@ const oauth2Client = new google.auth.OAuth2(
 );
 
 // Controller
-export const googleAuthController ={
+export const googleAuthController = {
   // Step 1: Redirect user to Google OAuth consent screen
   async connectAccount(req, res) {
     try {
       const customData = { userId: req.user.id, customParam: 'someValue' };
       const state = Buffer.from(JSON.stringify(customData)).toString('base64'); // Encode data as base64
-  
+
       const authUrl = oauth2Client.generateAuthUrl({
         access_type: 'offline',
         scope: [
@@ -32,7 +32,7 @@ export const googleAuthController ={
         prompt: 'consent',
         state: state, // Pass custom data in the state parameter
       });
-  
+
       res.json({ authUrl });
     } catch (error) {
       console.error('Error generating auth URL:', error);
@@ -44,42 +44,57 @@ export const googleAuthController ={
   async handleCallback(req, res) {
     try {
       const { code, state } = req.query;
-  
+
       if (!code) {
         return res.redirect(
           `${process.env.FRONTEND_BASE_URL}error?message=No authorization code provided`
         );
       }
-  
+
       // Decode the state parameter
       const customData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
-      const { userId, customParam, reauth } = customData;
-      console.log('Custom Data:', { userId, customParam });
-  
+      const { userId, customParam, reauth, emailId } = customData;
+      console.log('Custom Data:', { userId, customParam, reauth, emailId });
+
       // Exchange code for tokens
       const { tokens } = await oauth2Client.getToken(code);
       oauth2Client.setCredentials(tokens);
 
       console.log("Tokens", tokens);
-  
+
       // Get user info
       const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
       const userInfo = await oauth2.userinfo.get();
       console.log('User Info:', userInfo.data);
-  
+
       // Save account details to the database
-      if(!reauth){
-      const emailAccount = await UserEmail.create({
-        email: userInfo.data.email,
-        name: `${userInfo.data.given_name} ${userInfo.data.family_name}`,
-        picture: userInfo.data.picture,
-        createdBy: userId, // Use the userId from the state parameter
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        tokenExpiry: new Date(tokens.expiry_date),
-      });
-    }
-      // Redirect to frontend
+      if (!reauth) {
+        const emailAccount = await UserEmail.create({
+          email: userInfo.data.email,
+          name: `${userInfo.data.given_name} ${userInfo.data.family_name}`,
+          picture: userInfo.data.picture,
+          createdBy: userId, // Use the userId from the state parameter
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+          tokenExpiry: new Date(tokens.expiry_date),
+        });
+      }
+
+      if (reauth) {
+        await UserEmail.update(
+          {
+            accessToken: tokens.access_token,
+            refreshToken: tokens.refresh_token,
+            tokenExpiry: new Date(tokens.expiry_date),
+          },
+          {
+            where: { id: emailId, createdBy: userId }
+          }
+        );
+
+        console.log("Token updated Successfully");
+      }
+      // Redirect to frontends
       return res.redirect(
         `${process.env.FRONTEND_BASE_URL}admin/email-accounts`
       );
@@ -130,29 +145,29 @@ export const googleAuthController ={
     try {
       const { folderId = 'root' } = req.query;
       const { accountId } = req.params;
-  
+
       // Get the email account with tokens
       const emailAccount = await UserEmail.findOne({
         where: { id: accountId, createdBy: req.user.id },
       });
-  
+
       if (!emailAccount) {
         return res.status(404).json({ message: 'Email account not found' });
       }
-  
+
       // Set credentials for OAuth2 client
       oauth2Client.setCredentials({
         access_token: emailAccount.accessToken,
         refresh_token: emailAccount.refreshToken,
         expiry_date: emailAccount.tokenExpiry,
       });
-  
+
       // Function to fetch Drive files
       const fetchDriveFiles = async () => {
         const drive = google.drive({ version: 'v3', auth: oauth2Client });
         let allFiles = [];
         let pageToken = null;
-  
+
         do {
           const response = await drive.files.list({
             q: `'${folderId}' in parents and trashed = false`,
@@ -163,48 +178,48 @@ export const googleAuthController ={
             includeItemsFromAllDrives: true,
             pageToken: pageToken,
           });
-  
+
           allFiles = allFiles.concat(response.data.files);
           pageToken = response.data.nextPageToken;
         } while (pageToken);
-  
+
         return allFiles;
       };
-  
+
       try {
         // Attempt to fetch Drive files
         const files = await fetchDriveFiles();
         res.json(files);
       } catch (error) {
         console.error('Error fetching Drive files:', error);
-  
+
         // Check if the error is due to an invalid or expired token
         if (error.response?.status === 401 || error.message.includes('invalid_grant')) {
           console.log('Token expired or revoked. Attempting to refresh token...');
-  
+
           try {
             // Refresh the token
             const { tokens } = await oauth2Client.refreshToken(emailAccount.refreshToken);
             console.log('New tokens received:', tokens);
-  
+
             // Update the credentials
             oauth2Client.setCredentials(tokens);
-  
+
             // Update the database with new tokens
             await emailAccount.update({
               accessToken: tokens.access_token,
               refreshToken: tokens.refresh_token || emailAccount.refreshToken, // Use existing refresh token if new one is not provided
               tokenExpiry: new Date(tokens.expiry_date).toISOString(),
             });
-  
+
             console.log('Tokens updated in the database.');
-  
+
             // Retry the request with new tokens
             const files = await fetchDriveFiles();
             res.json(files);
           } catch (refreshError) {
             console.error('Error refreshing token:', refreshError);
-  
+
             // If token refresh fails, the refresh token might be invalid or revoked
             if (refreshError.message.includes('invalid_grant')) {
               return res.status(401).json({
@@ -231,11 +246,12 @@ export const googleAuthController ={
   // Step 6: Reauthenticate an account
   async reauthenticateAccount(req, res) {
     try {
-
-      const customData = { userId: req.user.id, reauth: true };
-      const state = Buffer.from(JSON.stringify(customData)).toString('base64'); // Encode data as base64
-  
       const { accountId } = req.params;
+
+      const customData = { userId: req.user.id, reauth: true, emailId: accountId };
+      const state = Buffer.from(JSON.stringify(customData)).toString('base64'); // Encode data as base64
+
+
 
       const emailAccount = await UserEmail.findOne({
         where: { id: accountId, createdBy: req.user.id },
