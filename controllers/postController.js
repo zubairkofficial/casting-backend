@@ -58,8 +58,8 @@ export const postController = {
         // Parse the postDate string into a Date object (if available)
         let postDate = null;
         if (postData.postDate) {
-          const postDateString = postData.postDate; // e.g., "2024년 11월 13일 17:11:28"
-          const dateParts = postDateString.match(/(\d{4})년 (\d{2})월 (\d{2})일 (\d{2}):(\d{2}):(\d{2})/);
+          const postDateString = postData.postDate; // e.g., "2024년 11월 13일 7:11:28" or "2024년 11월 13일 17:11:28"
+          const dateParts = postDateString.match(/(\d{4})년 (\d{2})월 (\d{2})일 (\d{1,2}):(\d{2}):(\d{2})/);
 
           if (dateParts) {
             const [_, year, month, day, hour, minute, second] = dateParts;
@@ -72,7 +72,13 @@ export const postController = {
               parseInt(second)
             );
           } else {
-            console.warn(`Invalid date format: ${postDateString}`);
+            // Try alternative date formats
+            const date = new Date(postDateString);
+            if (!isNaN(date.getTime())) {
+              postDate = date;
+            } else {
+              console.warn(`Invalid date format: ${postDateString}`);
+            }
           }
         }
 
@@ -81,7 +87,10 @@ export const postController = {
           postDate: postDate ? postDate.toISOString() : null, // Convert to ISO string or null
           isFavorite: false,
           isEmailSent: false,
-          data: postData,
+          data: {
+            ...postData,
+            postDate: postDate ? postDate.toISOString() : null // Also store the ISO string in data
+          },
           createdBy: userId,
         };
       });
@@ -111,6 +120,8 @@ export const postController = {
       });
     }
   },
+
+  
   async getAllPosts(req, res) {
     const id = req.user.id;
     console.log("Req id", id);
@@ -164,7 +175,7 @@ export const postController = {
         where: { isEmailSent: true, createdBy: req.user.id },
         limit,
         offset,
-        order: [["createdAt", "DESC"]],
+        order: [["postDate", "DESC"]],
       });
 
       const totalPages = Math.ceil(count / limit);
@@ -206,7 +217,7 @@ export const postController = {
         where: { isFavorite: true,  createdBy: req.user.id  },
         limit,
         offset,
-        order: [["createdAt", "DESC"]],
+        order: [["postDate", "DESC"]],
       });
 
       const totalPages = Math.ceil(count / limit);
@@ -269,7 +280,7 @@ export const postController = {
     try {
       const {
         query,
-        sortBy = "createdAt",
+        sortBy = "postDate",
         sortOrder = "DESC",
         page = 1,
         pageSize = 10,
@@ -281,7 +292,7 @@ export const postController = {
       const offset = (currentPage - 1) * limit;
 
       // Validate sortBy and sortOrder
-      const allowedSortFields = ["createdAt", "updatedAt", "id"];
+      const allowedSortFields = ["createdAt", "updatedAt", "id", "postDate"];
       const allowedSortOrders = ["ASC", "DESC"];
       const validSortBy = allowedSortFields.includes(sortBy)
         ? sortBy

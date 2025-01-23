@@ -11,5 +11,5 @@ router.get('/accounts', authenticateToken, googleAuthController.getConnectedAcco
 router.delete('/accounts/:id', authenticateToken, googleAuthController.disconnectAccount);
 router.get('/accounts/:accountId/files', authenticateToken, googleAuthController.getGoogleDriveFiles);
 router.get('/files/:accountId', authenticateToken, googleAuthController.getGoogleDriveFiles);
-
+router.get('/reauthenticate/:accountId', authenticateToken, googleAuthController.reauthenticateAccount)
 export default router; 

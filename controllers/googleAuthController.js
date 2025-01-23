@@ -53,12 +53,14 @@ export const googleAuthController ={
   
       // Decode the state parameter
       const customData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
-      const { userId, customParam } = customData;
+      const { userId, customParam, reauth } = customData;
       console.log('Custom Data:', { userId, customParam });
   
       // Exchange code for tokens
       const { tokens } = await oauth2Client.getToken(code);
       oauth2Client.setCredentials(tokens);
+
+      console.log("Tokens", tokens);
   
       // Get user info
       const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
@@ -66,6 +68,7 @@ export const googleAuthController ={
       console.log('User Info:', userInfo.data);
   
       // Save account details to the database
+      if(!reauth){
       const emailAccount = await UserEmail.create({
         email: userInfo.data.email,
         name: `${userInfo.data.given_name} ${userInfo.data.family_name}`,
@@ -75,7 +78,7 @@ export const googleAuthController ={
         refreshToken: tokens.refresh_token,
         tokenExpiry: new Date(tokens.expiry_date),
       });
-  
+    }
       // Redirect to frontend
       return res.redirect(
         `${process.env.FRONTEND_BASE_URL}admin/email-accounts`
@@ -228,6 +231,10 @@ export const googleAuthController ={
   // Step 6: Reauthenticate an account
   async reauthenticateAccount(req, res) {
     try {
+
+      const customData = { userId: req.user.id, reauth: true };
+      const state = Buffer.from(JSON.stringify(customData)).toString('base64'); // Encode data as base64
+  
       const { accountId } = req.params;
 
       const emailAccount = await UserEmail.findOne({
@@ -249,6 +256,8 @@ export const googleAuthController ={
           'https://www.googleapis.com/auth/spreadsheets',
         ],
         prompt: 'consent',
+        state: state, // Pass custom data in the state parameter
+
       });
 
       res.json({ authUrl });
