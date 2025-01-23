@@ -465,12 +465,12 @@ export const postController = {
 
   async dateFilter(req, res) {
     try {
-      // Extract query parameters
+      // Extract query parameters with consistent defaults
       const {
         startDate,
         endDate,
         page = 1,
-        pageSize = 50,
+        pageSize = 10, // Changed default to 10 to match other methods
         sortBy = "postDate",
         sortOrder = "DESC",
       } = req.query;
@@ -506,13 +506,13 @@ export const postController = {
         });
       }
 
-      // Pagination calculations
+      // Pagination calculations with consistent parsing
       const currentPage = parseInt(page, 10) > 0 ? parseInt(page, 10) : 1;
-      const limit = parseInt(pageSize, 10) > 0 ? parseInt(pageSize, 10) : 50;
+      const limit = parseInt(pageSize, 10) > 0 ? parseInt(pageSize, 10) : 10; // Changed default to 10
       const offset = (currentPage - 1) * limit;
 
       // Validate sortBy and sortOrder
-      const allowedSortFields = ["createdAt", "updatedAt", "id"];
+      const allowedSortFields = ["createdAt", "updatedAt", "id", "postDate"];
       const allowedSortOrders = ["ASC", "DESC"];
       const validSortBy = allowedSortFields.includes(sortBy)
         ? sortBy
@@ -527,15 +527,7 @@ export const postController = {
       const sqlQuery = `
         SELECT *
         FROM public.posts
-        WHERE TO_DATE(
-                REPLACE(
-                  REPLACE(
-                    REPLACE(data->>'postDate', '년 ', '-'),
-                    '월 ', '-'),
-                  '일 ', ' '
-                ),
-                'YYYY-MM-DD HH24:MI:SS'
-              )::date BETWEEN :startDate AND :endDate
+        WHERE CAST(data->>'postDate' AS TIMESTAMP)::date BETWEEN :startDate AND :endDate
         AND "createdBy" = :userId
         ORDER BY "${validSortBy}" ${validSortOrder}
         LIMIT :limit OFFSET :offset
@@ -545,15 +537,7 @@ export const postController = {
       const countQuery = `
         SELECT COUNT(*) AS count
         FROM public.posts
-        WHERE TO_DATE(
-                REPLACE(
-                  REPLACE(
-                    REPLACE(data->>'postDate', '년 ', '-'),
-                    '월 ', '-'),
-                  '일 ', ' '
-                ),
-                'YYYY-MM-DD HH24:MI:SS'
-              )::date BETWEEN :startDate AND :endDate
+        WHERE CAST(data->>'postDate' AS TIMESTAMP)::date BETWEEN :startDate AND :endDate
         AND "createdBy" = :userId
       `;
 
@@ -577,17 +561,18 @@ export const postController = {
         type: sequelize.QueryTypes.SELECT,
       });
 
-      // Return response with paginated posts
+      // Return response with consistent structure
       res.json({
         posts: { data: posts },
         pagination: {
-          totalItems,
-          totalPages,
           currentPage,
-          itemsPerPage: limit,
+          totalPages,
+          totalItems,
+          itemsPerPage: limit, // Changed from 'limit' to match other methods
           hasNextPage: currentPage < totalPages,
           hasPreviousPage: currentPage > 1,
         },
+        data: posts.map(post => post.data) // Added to match other methods
       });
     } catch (error) {
       console.error("Error filtering posts by date:", error);

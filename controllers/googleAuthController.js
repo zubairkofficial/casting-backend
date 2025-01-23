@@ -43,6 +43,7 @@ export const googleAuthController = {
   // Step 2: Handle Google OAuth callback
   async handleCallback(req, res) {
     try {
+      console.log("Query:", req.query);
       const { code, state } = req.query;
 
       if (!code) {
@@ -248,11 +249,6 @@ export const googleAuthController = {
     try {
       const { accountId } = req.params;
 
-      const customData = { userId: req.user.id, reauth: true, emailId: accountId };
-      const state = Buffer.from(JSON.stringify(customData)).toString('base64'); // Encode data as base64
-
-
-
       const emailAccount = await UserEmail.findOne({
         where: { id: accountId, createdBy: req.user.id },
       });
@@ -260,6 +256,9 @@ export const googleAuthController = {
       if (!emailAccount) {
         return res.status(404).json({ message: 'Email account not found' });
       }
+
+      const customData = { userId: req.user.id, reauth: true, emailId: accountId };
+      const state = Buffer.from(JSON.stringify(customData)).toString('base64');
 
       const authUrl = oauth2Client.generateAuthUrl({
         access_type: 'offline',
@@ -272,8 +271,8 @@ export const googleAuthController = {
           'https://www.googleapis.com/auth/spreadsheets',
         ],
         prompt: 'consent',
-        state: state, // Pass custom data in the state parameter
-
+        login_hint: emailAccount.email, // Add email hint to suggest the account
+        state: state,
       });
 
       res.json({ authUrl });
