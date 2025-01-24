@@ -283,7 +283,7 @@ export const postController = {
         sortBy = "postDate",
         sortOrder = "DESC",
         page = 1,
-        pageSize = 10,
+        pageSize = 50,
       } = req.query;
 
       // Convert page and pageSize to integers and set default values if necessary
@@ -470,7 +470,7 @@ export const postController = {
         startDate,
         endDate,
         page = 1,
-        pageSize = 10, // Changed default to 10 to match other methods
+        pageSize = 50, // Changed default to 10 to match other methods
         sortBy = "postDate",
         sortOrder = "DESC",
       } = req.query;
