@@ -48,7 +48,7 @@ export const googleAuthController = {
 
       if (!code) {
         return res.redirect(
-          `${process.env.FRONTEND_BASE_URL}error?message=No authorization code provided`
+          `${process.env.FRONTEND_BASE_URL}admin/error?message=No authorization code provided`
         );
       }
 
@@ -101,11 +101,12 @@ export const googleAuthController = {
       );
     } catch (error) {
       console.error('Error handling Google callback:', error);
+      const errorMessage = JSON.stringify(error) || "An error occurred";
       return res.redirect(
-        `${process.env.FRONTEND_BASE_URL}error?message=${error.message}`
+        `${process.env.FRONTEND_BASE_URL}admin/error?message=${errorMessage}`
       );
     }
-  },
+  },  
   // Step 3: Get all connected accounts for the authenticated user
   async getConnectedAccounts(req, res) {
     try {
