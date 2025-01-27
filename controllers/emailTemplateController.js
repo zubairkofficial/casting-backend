@@ -180,16 +180,18 @@ export const emailTemplateController = {
       const gmail = google.gmail({ version: "v1", auth: oauth2Client });
   
       // Prepare the email message with proper MIME type
+      const encodedSubject = `=?UTF-8?B?${Buffer.from(subject).toString("base64")}?=`; // Encode the subject
+
       const emailContent = [
         "MIME-Version: 1.0",
         "Content-Type: text/html; charset=utf-8",
         `From: ${userEmail.email}`,
         `To: ${recipient}`,
-        `Subject: ${subject || "No Subject"}`,
+        `Subject: ${encodedSubject || "No Subject"}`, // Use the encoded subject
         "",
         content, // The HTML content will now be rendered properly
-      ].join("\n");
-  
+      ].join("\r\n"); // Use \r\n for proper email formatting
+      
       // Encode the email in base64
       const encodedMessage = Buffer.from(emailContent)
         .toString("base64")
