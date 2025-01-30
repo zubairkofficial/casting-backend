@@ -28,7 +28,7 @@ export const emailTemplateController = {
   // Create new template
   async createTemplate(req, res) {
     try {
-      const { title, template,subject,htmlTemplate } = req.body;
+      const { title, template, subject, htmlTemplate } = req.body;
       const userId = req.user.id;
       // Extract variables from content using regex
       const variableRegex = /\[(.*?)\]/g;
@@ -95,26 +95,26 @@ export const emailTemplateController = {
     }
   },
 
-    // Delete template
-    async setDefaultTemplate(req, res) {
-      try {
-        const { id } = req.params;
-  
-        const content = await EmailTemplate.findByPk(id);
-        if (!content) {
-          return res.status(404).json({ message: "Template not found" });
-        }
-  
-        await content.update({ isDefault: content.isDefault ? false : true });
-        res.json({ message: "Template Set to Default." });
-      } catch (error) {
-        console.error("Error setting default template:", error);
-        res.status(500).json({
-          message: "Failed to set default template",
-          error: error.message,
-        });
+  // Delete template
+  async setDefaultTemplate(req, res) {
+    try {
+      const { id } = req.params;
+
+      const content = await EmailTemplate.findByPk(id);
+      if (!content) {
+        return res.status(404).json({ message: "Template not found" });
       }
-    },
+
+      await content.update({ isDefault: content.isDefault ? false : true });
+      res.json({ message: "Template Set to Default." });
+    } catch (error) {
+      console.error("Error setting default template:", error);
+      res.status(500).json({
+        message: "Failed to set default template",
+        error: error.message,
+      });
+    }
+  },
   // Delete template
   async deleteTemplate(req, res) {
     try {
@@ -187,7 +187,7 @@ export const emailTemplateController = {
       const userEmail = await UserEmail.findOne({
         where: {
           createdBy: req.user.id,
-         id: accountId
+          id: accountId
         },
       });
 
@@ -212,7 +212,10 @@ export const emailTemplateController = {
       // Create Gmail API client
       const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
-   
+      // Prepare the email message with proper MIME type
+      const encodedSubject = `=?UTF-8?B?${Buffer.from(defaultTemplate.subject).toString("base64")}?=`; // Encode the subject
+
+
       // Create email content with proper headers for HTML
       const emailLines = [
         'Content-Type: text/html; charset="UTF-8"',
@@ -220,7 +223,7 @@ export const emailTemplateController = {
         'Content-Transfer-Encoding: 7bit',
         `From: ${userEmail.email}`,
         `To: ${recipient}`,
-        `Subject: ${defaultTemplate.subject}`,
+        `Subject: ${encodedSubject}`,
         '',
         defaultTemplate.htmlTemplate
       ];
@@ -267,7 +270,7 @@ export const emailTemplateController = {
   async sendEmail(req, res) {
     try {
       const { recipient, subject, content, accountId, postId } = req.body;
-  
+
       // Validate input
       if (!recipient || !content || !accountId) {
         return res.status(400).json({
@@ -279,7 +282,7 @@ export const emailTemplateController = {
           message: "PostId is required",
         });
       }
-  
+
       // Get the user's Gmail account credentials
       const userEmail = await UserEmail.findOne({
         where: {
@@ -287,28 +290,28 @@ export const emailTemplateController = {
           createdBy: req.user.id,
         },
       });
-  
+
       if (!userEmail || !userEmail.accessToken) {
         return res.status(400).json({
           message: "Gmail account not found or not properly connected",
         });
       }
-  
+
       // Create OAuth2 client
       const oauth2Client = new OAuth2Client(
         process.env.GOOGLE_CLIENT_ID,
         process.env.GOOGLE_CLIENT_SECRET,
         `${process.env.BACKEND_API_URL}google-auth/callback`
       );
-  
+
       oauth2Client.setCredentials({
         access_token: userEmail.accessToken,
         refresh_token: userEmail.refreshToken,
       });
-  
+
       // Create Gmail API client
       const gmail = google.gmail({ version: "v1", auth: oauth2Client });
-  
+
       // Prepare the email message with proper MIME type
       const encodedSubject = `=?UTF-8?B?${Buffer.from(subject).toString("base64")}?=`; // Encode the subject
 
@@ -321,14 +324,14 @@ export const emailTemplateController = {
         "",
         content, // The HTML content will now be rendered properly
       ].join("\r\n"); // Use \r\n for proper email formatting
-      
+
       // Encode the email in base64
       const encodedMessage = Buffer.from(emailContent)
         .toString("base64")
         .replace(/\+/g, "-")
         .replace(/\//g, "_")
         .replace(/=+$/, "");
-  
+
       // Send the email using Gmail API
       const response = await gmail.users.messages.send({
         userId: "me",
@@ -336,7 +339,7 @@ export const emailTemplateController = {
           raw: encodedMessage,
         },
       });
-  
+
       // Update the post status
       const post = await Post.findOne({
         where: { postId: postId },
@@ -345,7 +348,7 @@ export const emailTemplateController = {
         post.isEmailSent = true;
         await post.save();
       }
-  
+
       res.status(200).json({
         message: "Email sent successfully",
         messageId: response.data.id,
