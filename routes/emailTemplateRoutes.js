@@ -14,5 +14,7 @@ router.get('/:id', emailTemplateController.getTemplateById);
 router.put('/:id', emailTemplateController.updateTemplate);
 router.delete('/:id', emailTemplateController.deleteTemplate);
 router.post('/send', emailTemplateController.sendEmail);
+router.post('/default', emailTemplateController.sendDefaultEmail);
+router.post('/set-default/:id', emailTemplateController.setDefaultTemplate);
 
 export default router; 

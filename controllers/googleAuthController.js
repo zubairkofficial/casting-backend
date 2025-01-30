@@ -1,4 +1,3 @@
-import express from 'express';
 import { google } from 'googleapis';
 import { UserEmail, User } from '../models/index.js';
 

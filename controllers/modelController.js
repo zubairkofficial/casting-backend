@@ -42,6 +42,7 @@ export class ModelController {
         stage,
         additionalPic,
         download,
+        htmlUrl: download,
         createdBy: req.user.id
       });
 

@@ -28,7 +28,7 @@ export const emailTemplateController = {
   // Create new template
   async createTemplate(req, res) {
     try {
-      const { title, template,subject } = req.body;
+      const { title, template,subject,htmlTemplate } = req.body;
       const userId = req.user.id;
       // Extract variables from content using regex
       const variableRegex = /\[(.*?)\]/g;
@@ -43,6 +43,7 @@ export const emailTemplateController = {
         template,
         variables,
         subject,
+        htmlTemplate,
         createdBy: userId
       });
 
@@ -61,7 +62,7 @@ export const emailTemplateController = {
   async updateTemplate(req, res) {
     try {
       const { id } = req.params;
-      const { title, template, subject } = req.body;
+      const { title, template, subject, htmlTemplate } = req.body;
 
       const content = await EmailTemplate.findByPk(id);
       if (!content) {
@@ -81,6 +82,7 @@ export const emailTemplateController = {
         template,
         variables,
         subject,
+        htmlTemplate,
       });
 
       res.json(content);
@@ -93,6 +95,26 @@ export const emailTemplateController = {
     }
   },
 
+    // Delete template
+    async setDefaultTemplate(req, res) {
+      try {
+        const { id } = req.params;
+  
+        const content = await EmailTemplate.findByPk(id);
+        if (!content) {
+          return res.status(404).json({ message: "Template not found" });
+        }
+  
+        await content.update({ isDefault: content.isDefault ? false : true });
+        res.json({ message: "Template Set to Default." });
+      } catch (error) {
+        console.error("Error setting default template:", error);
+        res.status(500).json({
+          message: "Failed to set default template",
+          error: error.message,
+        });
+      }
+    },
   // Delete template
   async deleteTemplate(req, res) {
     try {
@@ -129,6 +151,114 @@ export const emailTemplateController = {
       console.error("Error fetching template:", error);
       res.status(500).json({
         message: "Failed to fetch template",
+        error: error.message,
+      });
+    }
+  },
+
+  async sendDefaultEmail(req, res) {
+    try {
+      const { recipient, postId, accountId } = req.body;
+
+      // Validate input
+      if (!recipient) {
+        return res.status(400).json({
+          message: "Recipient is required",
+        });
+      }
+      if (!postId) {
+        return res.status(400).json({
+          message: "PostId is required",
+        });
+      }
+
+      // Find the default template
+      const defaultTemplate = await EmailTemplate.findOne({
+        where: { isDefault: true, createdBy: req.user.id }
+      });
+
+      if (!defaultTemplate) {
+        return res.status(404).json({
+          message: "No default email template found",
+        });
+      }
+
+      // Get the user's Gmail account credentials
+      const userEmail = await UserEmail.findOne({
+        where: {
+          createdBy: req.user.id,
+         id: accountId
+        },
+      });
+
+      if (!userEmail || !userEmail.accessToken) {
+        return res.status(400).json({
+          message: "Gmail account not found or not properly connected",
+        });
+      }
+
+      // Create OAuth2 client
+      const oauth2Client = new OAuth2Client(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        `${process.env.BACKEND_API_URL}google-auth/callback`
+      );
+
+      oauth2Client.setCredentials({
+        access_token: userEmail.accessToken,
+        refresh_token: userEmail.refreshToken,
+      });
+
+      // Create Gmail API client
+      const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+
+   
+      // Create email content with proper headers for HTML
+      const emailLines = [
+        'Content-Type: text/html; charset="UTF-8"',
+        'MIME-Version: 1.0',
+        'Content-Transfer-Encoding: 7bit',
+        `From: ${userEmail.email}`,
+        `To: ${recipient}`,
+        `Subject: ${defaultTemplate.subject}`,
+        '',
+        defaultTemplate.htmlTemplate
+      ];
+
+      const email = emailLines.join('\r\n');
+
+      // Encode the email in base64URL format
+      const encodedMessage = Buffer.from(email)
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+
+      // Send the email
+      const response = await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: {
+          raw: encodedMessage,
+        },
+      });
+
+      // Update the post status
+      const post = await Post.findOne({
+        where: { postId: postId },
+      });
+      if (post) {
+        post.isEmailSent = true;
+        await post.save();
+      }
+
+      res.status(200).json({
+        message: "Default template email sent successfully",
+        messageId: response.data.id,
+      });
+    } catch (error) {
+      console.error("Error sending email:", error);
+      res.status(500).json({
+        message: "Failed to send email",
         error: error.message,
       });
     }

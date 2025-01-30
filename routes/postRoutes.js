@@ -14,6 +14,7 @@ router.get('/sent-emails', postController.getAllEmailedPosts);
 router.get('/favorites', postController.getFavoritesPosts);
 router.get('/filter', postController.filterPosts);
 router.get('/dateFilter', postController.dateFilter);
+router.get('/filtered-posts', postController.getFilteredPosts);
 
 
 export default router; 

@@ -40,6 +40,11 @@ export default function initEmailTemplateModel(sequelize) {
                     notEmpty: true
                 }
             },
+            htmlTemplate: {  // New field for HTML version
+                type: DataTypes.TEXT,
+                allowNull: true,
+                defaultValue: null
+            },
             variables: {
                 type: DataTypes.JSON,
                 allowNull: false,
@@ -51,6 +56,11 @@ export default function initEmailTemplateModel(sequelize) {
                         }
                     }
                 }
+            },
+            isDefault: {
+                type: DataTypes.BOOLEAN,
+                allowNull: false,
+                defaultValue: false
             },
             isActive: {
                 type: DataTypes.BOOLEAN,
@@ -95,6 +105,24 @@ export default function initEmailTemplateModel(sequelize) {
     EmailTemplate.addHook('beforeUpdate', async (template) => {
         await EmailTemplate.validateEmailTemplate(template);
     });
+
+    // Add hook to handle isDefault constraint
+    EmailTemplate.addHook('beforeSave', async (template, options) => {
+        if (template.isDefault) {
+            // If this template is being set as default, unset all other defaults
+            await EmailTemplate.update(
+                { isDefault: false },
+                {
+                    where: {
+                        id: { [sequelize.Sequelize.Op.ne]: template.id || null }
+                    },
+                    transaction: options.transaction
+                }
+            );
+        }
+    });
+
+    // Add hook to automatically generate HTML templat
 
     // Add class methods
     EmailTemplate.findByTitle = function (title) {

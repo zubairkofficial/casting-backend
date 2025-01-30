@@ -154,8 +154,7 @@ export const postController = {
           hasNextPage: page < totalPages,
           hasPreviousPage: page > 1,
         },
-        data: dataFields, // Sending the `data` column separately
-
+        data: dataFields, 
       });
     } catch (error) {
       console.error("Error fetching posts:", error);
@@ -168,7 +167,7 @@ export const postController = {
   async getAllEmailedPosts(req, res) {
     try {
       const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 10;
+      const limit = parseInt(req.query.pageSize) || 10;
       const offset = (page - 1) * limit;
 
       const { count, rows: posts } = await Post.findAndCountAll({
@@ -237,8 +236,7 @@ export const postController = {
           hasNextPage: page < totalPages,
           hasPreviousPage: page > 1,
         },
-        data: dataFields, // Sending the `data` column separately
-        print: "Hello",
+        data: dataFields, 
       });
     } catch (error) {
       console.error("Error fetching posts:", error);
@@ -284,6 +282,7 @@ export const postController = {
         sortOrder = "DESC",
         page = 1,
         pageSize = 50,
+        filter,
       } = req.query;
 
       // Convert page and pageSize to integers and set default values if necessary
@@ -301,50 +300,63 @@ export const postController = {
         ? sortOrder.toUpperCase()
         : "DESC";
 
-      // Use ILIKE for case-insensitive pattern matching
-      const ilikeQuery = `
-        (data::text ILIKE '%' || :query || '%') OR
-        (data->>'body' ILIKE '%' || :query || '%') OR
-        (data->>'postTitle' ILIKE '%' || :query || '%') OR
-        (data->>'description' ILIKE '%' || :query || '%') OR
-        (data->>'postDate' ILIKE '%' || :query || '%') OR
-        (data->>'titleOfTheWork' ILIKE '%' || :query || '%') OR 
-        (data->>'roleInThePlay' ILIKE '%' || :query || '%') OR
-        (data->>'manager' ILIKE '%' || :query || '%') OR
-        (data->>'phoneCall' ILIKE '%' || :query || '%') OR
-        (data->>'appearanceFee' ILIKE '%' || :query || '%') 
-      `;
+      // Modify the ILIKE query to include filter conditions
+      let whereConditions = [`"createdBy" = :userId`];
+      let replacements = { 
+        query,
+        userId: req.user.id,
+        limit,
+        offset
+      };
 
-      // Construct SQL query with LIMIT and OFFSET
+      // Add the search conditions
+      whereConditions.push(`(
+        data::text ILIKE '%' || :query || '%' OR
+        data->>'body' ILIKE '%' || :query || '%' OR
+        data->>'postTitle' ILIKE '%' || :query || '%' OR
+        data->>'description' ILIKE '%' || :query || '%' OR
+        data->>'postDate' ILIKE '%' || :query || '%' OR
+        data->>'titleOfTheWork' ILIKE '%' || :query || '%' OR 
+        data->>'roleInThePlay' ILIKE '%' || :query || '%' OR
+        data->>'manager' ILIKE '%' || :query || '%' OR
+        data->>'phoneCall' ILIKE '%' || :query || '%' OR
+        data->>'appearanceFee' ILIKE '%' || :query || '%'
+      )`);
+
+      // Add filter condition if provided
+      if (filter) {
+        whereConditions.push(
+          `(data ? 'recruitmentGender' AND data->>'recruitmentGender' = :filter)`
+        );
+        replacements.filter = filter;
+      }
+
+      const whereClause = whereConditions.join(' AND ');
+
+      // Update SQL queries to use the new where clause
       const sqlQuery = `
         SELECT *
         FROM public.posts
-        WHERE (${ilikeQuery}) AND "createdBy" = :userId
+        WHERE ${whereClause}
         ORDER BY "${validSortBy}" ${validSortOrder}
         LIMIT :limit OFFSET :offset
       `;
 
-      // Count total matching posts for pagination
       const countQuery = `
         SELECT COUNT(*) AS count
         FROM public.posts
-        WHERE (${ilikeQuery}) AND "createdBy" = :userId
+        WHERE ${whereClause}
       `;
 
       // Execute count query with correct destructuring
       const [{ count }] = await sequelize.query(countQuery, {
-        replacements: { query, userId: req.user.id },
+        replacements,
         type: sequelize.QueryTypes.SELECT,
       });
 
       // Execute select query
       const posts = await sequelize.query(sqlQuery, {
-        replacements: {
-          query,
-          limit,
-          offset,
-          userId: req.user.id
-        },
+        replacements,
         type: sequelize.QueryTypes.SELECT,
       });
 
@@ -420,7 +432,6 @@ export const postController = {
                 LIMIT :limit OFFSET :offset
             `;
 
-
       // Add limit and offset to replacements
       replacements.limit = limit;
       replacements.offset = offset;
@@ -478,7 +489,7 @@ export const postController = {
       // Validate required date parameters
       if (!startDate || !endDate) {
         return res.status(400).json({
-          error: "Both startDate and endDate are required in YYYY-MM-DD format.",
+          error: "Both startDate and endDate are required in MM-DD-YYYY format.",
         });
       }
 
@@ -486,7 +497,7 @@ export const postController = {
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
         return res.status(400).json({
-          error: "startDate and endDate must be in YYYY-MM-DD format.",
+          error: "startDate and endDate must be in MM-DD-YYYY format.",
         });
       }
 
@@ -579,6 +590,156 @@ export const postController = {
       res.status(500).json({
         message: "Failed to filter posts by date",
         error: error.message,
+      });
+    }
+  },
+
+  async getFilteredPosts(req, res) {
+    try {
+      const {
+        query,
+        activeFilter,
+        startDate,
+        endDate,
+        sortBy = "postDate",
+        sortOrder = "DESC",
+        page = 1,
+        pageSize = 50,
+      } = req.query;
+
+      // Convert page and pageSize to integers
+      const currentPage = parseInt(page, 10) > 0 ? parseInt(page, 10) : 1;
+      const limit = parseInt(pageSize, 10) > 0 ? parseInt(pageSize, 10) : 50;
+      const offset = (currentPage - 1) * limit;
+
+      // Validate sortBy and sortOrder
+      const allowedSortFields = ["createdAt", "updatedAt", "id", "postDate"];
+      const allowedSortOrders = ["ASC", "DESC"];
+      const validSortBy = allowedSortFields.includes(sortBy) ? sortBy : "createdAt";
+      const validSortOrder = allowedSortOrders.includes(sortOrder.toUpperCase())
+        ? sortOrder.toUpperCase()
+        : "DESC";
+
+      // Build WHERE conditions
+      let whereConditions = ['\"createdBy\" = :userId'];
+      let replacements = { userId: req.user.id };
+
+      // Add query search condition if provided
+      if (query) {
+        whereConditions.push(`(
+          data::text ILIKE '%' || :query || '%' OR
+          data->>'body' ILIKE '%' || :query || '%' OR
+          data->>'postTitle' ILIKE '%' || :query || '%' OR
+          data->>'description' ILIKE '%' || :query || '%' OR
+          data->>'postDate' ILIKE '%' || :query || '%' OR
+          data->>'titleOfTheWork' ILIKE '%' || :query || '%' OR 
+          data->>'roleInThePlay' ILIKE '%' || :query || '%' OR
+          data->>'manager' ILIKE '%' || :query || '%' OR
+          data->>'phoneCall' ILIKE '%' || :query || '%' OR
+          data->>'appearanceFee' ILIKE '%' || :query || '%'
+        )`);
+        replacements.query = query;
+      }
+
+      // Add active filter if provided
+      if (activeFilter) {
+        whereConditions.push(
+          `(data ? 'recruitmentGender' AND data->>'recruitmentGender' = :activeFilter)`
+        );
+        replacements.activeFilter = activeFilter;
+      }
+
+      // Add date range filter if both dates are provided
+      if (startDate && endDate) {
+        // Validate date formats
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
+          return res.status(400).json({
+            error: "startDate and endDate must be in YYYY-MM-DD format.",
+          });
+        }
+
+        // Validate date range
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        if (isNaN(start) || isNaN(end)) {
+          return res.status(400).json({
+            error: "Invalid startDate or endDate provided.",
+          });
+        }
+        if (start > end) {
+          return res.status(400).json({
+            error: "startDate cannot be after endDate.",
+          });
+        }
+
+        whereConditions.push(
+          `CAST(data->>'postDate' AS TIMESTAMP)::date BETWEEN :startDate AND :endDate`
+        );
+        replacements.startDate = startDate;
+        replacements.endDate = endDate;
+      }
+
+      const whereClause = whereConditions.join(" AND ");
+
+      // Construct SQL query
+      const sqlQuery = `
+        SELECT *
+        FROM public.posts
+        WHERE ${whereClause}
+        ORDER BY "${validSortBy}" ${validSortOrder}
+        LIMIT :limit OFFSET :offset
+      `;
+
+      // Add pagination parameters to replacements
+      replacements.limit = limit;
+      replacements.offset = offset;
+
+      // Get total count
+      const countQuery = `
+        SELECT COUNT(*) AS count
+        FROM public.posts
+        WHERE ${whereClause}
+      `;
+
+      // Execute queries
+      const [countResult] = await sequelize.query(countQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+      const posts = await sequelize.query(sqlQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+      // Calculate pagination metadata
+      const totalItems = parseInt(countResult.count, 10);
+      const totalPages = Math.ceil(totalItems / limit);
+
+      // Return response with active filters included
+      res.json({
+        posts: { data: posts },
+        pagination: {
+          totalItems,
+          totalPages,
+          currentPage,
+          itemsPerPage: limit,
+          hasNextPage: currentPage < totalPages,
+          hasPreviousPage: currentPage > 1,
+        },
+        activeFilters: {
+          query: query || null,
+          activeFilter: activeFilter || null,
+          dateRange: startDate && endDate ? { startDate, endDate } : null
+        },
+        data: posts.map(post => post.data)
+      });
+    } catch (error) {
+      console.error("Error filtering posts:", error);
+      res.status(500).json({ 
+        message: "Failed to filter posts", 
+        error: error.message 
       });
     }
   },
