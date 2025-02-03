@@ -15,6 +15,6 @@ router.get('/favorites', postController.getFavoritesPosts);
 router.get('/filter', postController.filterPosts);
 router.get('/dateFilter', postController.dateFilter);
 router.get('/filtered-posts', postController.getFilteredPosts);
-
+router.post('/addMemo/:id', postController.addMemo);
 
 export default router; 

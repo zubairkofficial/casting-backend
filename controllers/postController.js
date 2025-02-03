@@ -257,6 +257,7 @@ export const postController = {
         return res.status(404).json({ message: "Post not found" });
       }
 
+      
       await post.update({
         isFavorite: isFavorite !== undefined ? isFavorite : post.isFavorite,
       });
@@ -269,6 +270,34 @@ export const postController = {
       console.error("Error updating post:", error);
       res.status(500).json({
         message: "Failed to update post",
+        error: error.message,
+      });
+    }
+  },
+
+  async addMemo(req, res) {
+    try {
+      const { id } = req.params;
+      const { memo } = req.body;
+
+      const post = await Post.findOne({ where: { postId: id } });
+      if (!post) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+
+      if (memo) {
+        await post.update({
+          memo: memo,
+        });
+      }
+      res.json({
+        message: "Memo added successfully",
+        post,
+      });
+    } catch (error) {
+      console.error("Error adding memo:", error);
+      res.status(500).json({
+        message: "Failed to add memo",
         error: error.message,
       });
     }
@@ -476,12 +505,12 @@ export const postController = {
 
   async dateFilter(req, res) {
     try {
-      // Extract query parameters with consistent defaults
       const {
         startDate,
         endDate,
+        activeFilter,
         page = 1,
-        pageSize = 50, // Changed default to 10 to match other methods
+        pageSize = 50,
         sortBy = "postDate",
         sortOrder = "DESC",
       } = req.query;
@@ -497,7 +526,7 @@ export const postController = {
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
         return res.status(400).json({
-          error: "startDate and endDate must be in MM-DD-YYYY format.",
+          error: "startDate and endDate must be in YYYY-MM-DD format.",
         });
       }
 
@@ -519,7 +548,7 @@ export const postController = {
 
       // Pagination calculations with consistent parsing
       const currentPage = parseInt(page, 10) > 0 ? parseInt(page, 10) : 1;
-      const limit = parseInt(pageSize, 10) > 0 ? parseInt(pageSize, 10) : 10; // Changed default to 10
+      const limit = parseInt(pageSize, 10) > 0 ? parseInt(pageSize, 10) : 10;
       const offset = (currentPage - 1) * limit;
 
       // Validate sortBy and sortOrder
@@ -528,18 +557,39 @@ export const postController = {
       const validSortBy = allowedSortFields.includes(sortBy)
         ? sortBy
         : "createdAt";
-      const validSortOrder = allowedSortOrders.includes(
-        sortOrder.toUpperCase()
-      )
+      const validSortOrder = allowedSortOrders.includes(sortOrder.toUpperCase())
         ? sortOrder.toUpperCase()
         : "DESC";
 
-      // SQL Query to filter based on date range
+      // Build WHERE conditions
+      let whereConditions = [
+        'CAST(data->>\'postDate\' AS TIMESTAMP)::date BETWEEN :startDate AND :endDate',
+        '"createdBy" = :userId'
+      ];
+      
+      let replacements = {
+        startDate, 
+        endDate,
+        userId: req.user.id,
+        limit,
+        offset
+      };
+
+      // Add active filter condition if provided and not "All"
+      if (activeFilter && activeFilter !== "All") {
+        whereConditions.push(
+          `(data ? 'recruitmentGender' AND data->>'recruitmentGender' = :activeFilter)`
+        );
+        replacements.activeFilter = activeFilter;
+      }
+
+      const whereClause = whereConditions.join(' AND ');
+
+      // SQL Query with filter conditions
       const sqlQuery = `
         SELECT *
         FROM public.posts
-        WHERE CAST(data->>'postDate' AS TIMESTAMP)::date BETWEEN :startDate AND :endDate
-        AND "createdBy" = :userId
+        WHERE ${whereClause}
         ORDER BY "${validSortBy}" ${validSortOrder}
         LIMIT :limit OFFSET :offset
       `;
@@ -548,27 +598,21 @@ export const postController = {
       const countQuery = `
         SELECT COUNT(*) AS count
         FROM public.posts
-        WHERE CAST(data->>'postDate' AS TIMESTAMP)::date BETWEEN :startDate AND :endDate
-        AND "createdBy" = :userId
+        WHERE ${whereClause}
       `;
 
       // Execute count query
-      const countResult = await sequelize.query(countQuery, {
-        replacements: { startDate, endDate, userId: req.user.id },
+      const [{ count }] = await sequelize.query(countQuery, {
+        replacements,
         type: sequelize.QueryTypes.SELECT,
       });
-      const totalItems = parseInt(countResult[0].count, 10);
+      
+      const totalItems = parseInt(count, 10);
       const totalPages = Math.ceil(totalItems / limit);
 
       // Execute select query
       const posts = await sequelize.query(sqlQuery, {
-        replacements: { 
-          startDate, 
-          endDate, 
-          limit, 
-          offset,
-          userId: req.user.id 
-        },
+        replacements,
         type: sequelize.QueryTypes.SELECT,
       });
 
@@ -579,11 +623,15 @@ export const postController = {
           currentPage,
           totalPages,
           totalItems,
-          itemsPerPage: limit, // Changed from 'limit' to match other methods
+          itemsPerPage: limit,
           hasNextPage: currentPage < totalPages,
           hasPreviousPage: currentPage > 1,
         },
-        data: posts.map(post => post.data) // Added to match other methods
+        activeFilters: {
+          dateRange: { startDate, endDate },
+          activeFilter: activeFilter || null
+        },
+        data: posts.map(post => post.data)
       });
     } catch (error) {
       console.error("Error filtering posts by date:", error);

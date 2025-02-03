@@ -37,6 +37,11 @@ export default function initPostModel(sequelize) {
                 type: DataTypes.STRING,
                 defaultValue: null,
             },
+            memo: {
+                type: DataTypes.TEXT,
+                defaultValue: null,
+                allowNull: true,
+            },
             data: {
                 type: DataTypes.JSONB,
                 allowNull: false,
